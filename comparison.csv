@@ -1,0 +1,6 @@
+model,entity,precision,recall,f1,support
+medgemma-4b-it,Chemical,0.6414,0.4909,0.5561,656
+medgemma-4b-it,Disease,0.5969,0.6011,0.599,707
+medgemma-4b-it,micro avg,0.6153,0.5481,0.5797,1363
+medgemma-4b-it,macro avg,0.6192,0.546,0.5776,1363
+medgemma-4b-it,weighted avg,0.6183,0.5481,0.5784,1363
