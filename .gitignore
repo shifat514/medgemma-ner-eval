@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# UV
+.uv/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+# HuggingFace token / cache — NEVER commit credentials
+.huggingface/
+hf_token*
+*.token
+
+# Environment / secrets
+.env
+.env.*
+*.env
+secrets.*
+
+# Evaluation output (produced by a run; results/.gitkeep keeps the dir)
+results/*.csv
+results/*.json
+
+# Model weights (downloaded at runtime)
+*.bin
+*.safetensors
+*.pt
+*.ckpt
+
+# Data (datasets are downloaded at runtime)
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+wandb/
+runs/
