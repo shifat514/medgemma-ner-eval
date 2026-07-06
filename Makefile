@@ -1,4 +1,4 @@
-.PHONY: setup test smoke eval lint clean
+.PHONY: setup test smoke eval haiku-smoke haiku-eval lint clean
 
 # Install dependencies via uv
 setup:
@@ -15,6 +15,15 @@ smoke:
 # Full evaluation -> results/comparison.csv (needs a GPU + HF login)
 eval:
 	uv run python -m src.evaluate
+
+# Claude Haiku baseline (needs ANTHROPIC_API_KEY in .env; no GPU).
+# Smoke test does a 1-sentence API check first, then the first 10 examples.
+haiku-smoke:
+	uv run python -m src.evaluate_haiku --limit 10
+
+# Full Haiku eval -> results/haiku_comparison.csv (does NOT touch comparison.csv).
+haiku-eval:
+	uv run python -m src.evaluate_haiku
 
 lint:
 	uv run ruff check src tests

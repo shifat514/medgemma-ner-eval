@@ -1,0 +1,6 @@
+model,entity,precision,recall,f1,support
+claude-haiku-4-5,Chemical,0.815,0.6784,0.7404,656
+claude-haiku-4-5,Disease,0.6484,0.7044,0.6753,707
+claude-haiku-4-5,micro avg,0.7177,0.6919,0.7045,1363
+claude-haiku-4-5,macro avg,0.7317,0.6914,0.7078,1363
+claude-haiku-4-5,weighted avg,0.7286,0.6919,0.7066,1363

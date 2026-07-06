@@ -105,6 +105,61 @@ CLI flags: `--limit N` (first N examples), `--model <hf_id>`, `--model-name <lab
 
 ---
 
+## Claude Haiku baseline (API, no GPU)
+
+A parallel baseline runs the **exact same** dataset, prompt, JSON parsing,
+span→BIO alignment, and seqeval scorer — the **only** variable is the model.
+Instead of a local MedGemma pipeline, each test sentence is sent to the
+**Anthropic Messages API** (`claude-haiku-4-5`, `temperature=0`) via the official
+`anthropic` SDK. No GPU, no `transformers` — it runs on CPU locally.
+
+Results go to **separate** files so the MedGemma output is never overwritten:
+
+| | MedGemma | Haiku |
+|---|---|---|
+| CSV | `results/comparison.csv` | `results/haiku_comparison.csv` |
+| JSON | `results/full_report.json` | `results/haiku_full_report.json` |
+
+The CSV schema is identical (`model, entity, precision, recall, f1, support`) and
+the `model` column is `claude-haiku-4-5`, so the Haiku row concatenates with the
+MedGemma and sibling BERT tables the same way.
+
+### `.env` setup (public repo — key is never committed)
+
+```bash
+cp .env.example .env
+# edit .env and set your real key:
+#   ANTHROPIC_API_KEY=sk-ant-...
+```
+
+`.env` is git-ignored (`.env.example`, a placeholder, is committed). The key is
+loaded at runtime via `python-dotenv` from `ANTHROPIC_API_KEY` — it is never
+hardcoded, printed, or committed. Verify it is ignored:
+
+```bash
+git check-ignore .env        # prints ".env" if correctly ignored
+```
+
+### Run it
+
+```bash
+pip install uv && uv sync --extra test    # installs anthropic + python-dotenv
+
+# Smoke test: does a single 1-sentence API call to confirm the key + model,
+# THEN evaluates the first 10 examples.  (make haiku-smoke)
+python -m src.evaluate_haiku --limit 10
+
+# Full eval -> results/haiku_comparison.csv        (make haiku-eval)
+python -m src.evaluate_haiku
+```
+
+Every run prints estimated token usage and a rough cost at the end. CLI flags:
+`--limit N`, `--model <id>`, `--model-name <label>`, `--no-preflight` (skip the
+1-sentence check). A small inter-request delay and retry-with-backoff handle API
+rate limits.
+
+---
+
 ## Tests
 
 CPU-only, no GPU, no model download, no dataset download — they exercise the
@@ -117,6 +172,9 @@ injected fake reply):
   repeated occurrences, no-overwrite, absent spans).
 - `tests/test_scoring.py` — seqeval integration + full parse→align→score chain,
   including graceful degradation on bad/failed replies.
+- `tests/test_haiku.py` — Claude Haiku backend with a **mocked** Anthropic API
+  (no network): reply parsing, usage accumulation, request shape, retry-on-429,
+  and the full parse→align pipeline.
 
 ```bash
 uv run pytest -q
@@ -137,13 +195,17 @@ src/
   prompt.py            prompt construction + robust JSON reply parsing
   align.py             predicted span → BIO alignment onto the token list
   model.py             MedGemma pipeline load + text-only inference (lazy torch import)
+  haiku_model.py       Claude Haiku API inference (anthropic SDK, .env key, retry/backoff)
   scoring.py           seqeval report + comparison.csv writer (sibling-identical)
-  evaluate.py          orchestration + CLI (--limit smoke mode)
+  evaluate.py          MedGemma orchestration + CLI (--limit smoke mode)
+  evaluate_haiku.py    Claude Haiku orchestration + CLI (1-sentence preflight, cost print)
 colab_runner.ipynb     PRIMARY runner (deps, HF login, T4, smoke → full eval)
 tests/                 CPU-only unit tests
 results/
-  comparison.csv       model × entity scores (written by a run)
-  full_report.json     full-precision seqeval report
+  comparison.csv       MedGemma model × entity scores
+  full_report.json     MedGemma full-precision seqeval report
+  haiku_comparison.csv MedGemma-schema scores for claude-haiku-4-5 (separate file)
+  haiku_full_report.json  Haiku full-precision seqeval report
 ```
 
 **Model id / label:** default model `google/medgemma-4b-it`; the `model` column
@@ -155,3 +217,7 @@ in `comparison.csv` is `medgemma-4b-it`.
 
 Never hardcode or commit a Hugging Face token. The notebook reads it at runtime
 via `getpass`; `.gitignore` also excludes common token filenames and caches.
+
+For the Haiku baseline, the **Anthropic API key** is read from a git-ignored
+`.env` file via `python-dotenv` (`ANTHROPIC_API_KEY`) — never hardcoded, printed,
+or committed. Only the placeholder `.env.example` is committed.
