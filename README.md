@@ -338,6 +338,8 @@ MIMIC-IV medication NER — only the data loading and chunking are new:
   prompt_mimic.py      medication prompt (reuses prompt.parse_entities)
   evaluate_mimic.py    orchestration, incremental save + resume, --oracle, CLI
   report_mimic.py      markdown report writer (aggregate metrics ONLY)
+  analyze_replies.py   repetition/truncation analysis of raw_replies.jsonl
+                       (structure and counts only — never note text)
   build_mimic_sample.py  LOCAL-ONLY sample extraction from the credentialed data
 colab_runner_mimic.ipynb  T4 runner (manual sample upload, 5 → 50 → 100)
 results/

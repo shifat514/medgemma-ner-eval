@@ -143,12 +143,17 @@ LOAD_IN_4BIT = True
 # for single sentences: a 400-word chunk of a discharge summary can legitimately
 # contain 30+ medication entities.
 #
-# Raised 1024 -> 1536 after a smoke run hit the cap on 5 of 21 chunks (24%).
-# A capped generation truncates the entity list mid-JSON, so recall drops for a
-# configuration reason rather than a model reason. The report prints the cap-hit
-# count prominently; if it is still non-zero, raise this again.
+# Held at 1024 after measuring the alternative. Raising it to 1536 was tested on
+# n=5 and reverted: F1 0.3048 -> 0.2895, precision 0.324 -> 0.286, recall
+# essentially flat (0.288 -> 0.293), runtime 17 -> 23 min. The extra headroom
+# produced more spurious spans, not more correct ones.
+#
+# Critically, the SAME 5 of 21 chunks hit the cap at both 1024 and 1536. A cap
+# that binds identically at two very different limits is not a length problem —
+# see src/analyze_replies.py for the repetition-loop check. Raising the cap
+# further would buy nothing but runtime.
 GEN_CONFIG = {
-    "max_new_tokens": int(os.environ.get("MIMIC_MAX_NEW_TOKENS", "1536")),
+    "max_new_tokens": int(os.environ.get("MIMIC_MAX_NEW_TOKENS", "1024")),
     "do_sample": False,
 }
 

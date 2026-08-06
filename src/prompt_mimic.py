@@ -63,7 +63,17 @@ _TYPE_ALIASES = {
 }
 
 # Keys that may hold the span text / the type, in priority order.
-_TEXT_KEYS = ("text", "span", "entity", "value", "mention", "string", "name")
+_TEXT_KEYS = ("text", "span", "entity", "value", "mention", "string", "name",
+              "keyword", "term", "phrase")
+
+# Deliberately NOT in _TYPE_ALIASES: "keyword", "term", "phrase", "item",
+# "entity". As a *type value* these carry no type information, so mapping one
+# onto a label is a guess. Medication is the largest class at ~35% of gold, so
+# the guess is wrong ~65% of the time — and a wrong type is both a false
+# positive and a still-missed false negative, which is strictly worse than
+# dropping the item. They stay rejected, and the diagnostics keep counting them.
+_UNTYPED_LABELS = frozenset({"keyword", "term", "phrase", "item", "entity",
+                             "other", "misc", "unknown"})
 _TYPE_KEYS = ("type", "label", "category", "entity_type", "entity type",
               "tag", "class")
 
@@ -95,6 +105,9 @@ def normalize_type(raw):
             return None
     norm = _norm_type(raw)
     if not norm:
+        return None
+    if norm in _UNTYPED_LABELS:
+        # Explicit reject: guessing a label here is worse than dropping.
         return None
 
     for label in ENTITY_TYPES:                   # exact, case-insensitive

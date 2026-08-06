@@ -15,8 +15,10 @@ at 400/80, **372 gold spans**.
 |---|---|---|---|---|---|---|
 | **oracle ceiling** | perfect extractor, same pipeline | 0.8987 | 0.9059 | **0.9023** | 21.8 | 0 |
 | smoke 1 | original parser, `max_new_tokens=1024` | 0.323 | 0.086 | 0.136 | 3.5 | — |
-| smoke 2 | parse fix + prompt rewrite, 1024 | 0.3242 | 0.2876 | 0.3048 | 27.7 | 5/21 (24%) |
-| smoke 3 | + `max_new_tokens=1536` | *pending* | | | | |
+| smoke 2 | parse fix + prompt rewrite, 1024 | 0.3242 | 0.2876 | **0.3048** | 27.7 | 5/21 (24%) |
+| smoke 3 | `max_new_tokens=1536` | 0.286 | 0.293 | 0.2895 | 35.0 | 5/21 (24%) |
+
+Config held at **1024** (smoke 2). Runtime 17 min vs 23 min at 1536.
 
 Per-type F1 at smoke 2: Medication .397, Frequency .358, Dose .336, Mode .231,
 Duration .160, Reason .108.
@@ -36,10 +38,49 @@ net — it costs nothing and catches drift — but the prompt did the work.
 All 21 chunks returned parseable JSON (`reply shapes: json=21`), against 17 of 22
 realistic shapes silently failing before the fix.
 
-**Smoke 2 → 3: removing a configuration artefact.** Generation hit
-`max_new_tokens` on 5 of 21 chunks (24%). A capped chunk is cut off mid-list, so
-entities after the cut were never emitted at all. That depresses recall for a
-config reason, not a model reason. Default raised 1024 → 1536.
+**Smoke 2 → 3: raising the cap was a wash, and was reverted.** The hypothesis
+was that truncation on 5 of 21 chunks (24%) was suppressing recall. Raising
+`max_new_tokens` 1024 → 1536 tested it:
+
+| | 1024 | 1536 |
+|---|---|---|
+| micro F1 | **0.3048** | 0.2895 |
+| precision | **0.324** | 0.286 |
+| recall | 0.288 | 0.293 |
+| entities/chunk | 27.7 | 35.0 |
+| runtime | **17 min** | 23 min |
+| chunks hitting cap | 5 / 21 | **5 / 21** |
+
+Recall moved +0.005. The extra headroom produced more spurious spans, not more
+correct ones — precision fell 0.038 and runtime rose 35%. Reverted to 1024.
+
+**The finding worth keeping is the last row.** The *same* 5 of 21 chunks hit the
+cap at both 1024 and 1536. A cap that binds identically at two very different
+budgets is not a length limit: those chunks would truncate at any budget. The
+usual cause is greedy decoding (`do_sample=False`) falling into a repetition
+loop — emitting the same JSON object until it exhausts the budget. That also
+explains why the extra 512 tokens produced spurious rather than correct spans.
+
+`src/analyze_replies.py` tests this directly against a run's `raw_replies.jsonl`,
+reporting duplicate-item rate, longest identical-item run, and whether the same
+chunks truncate across two runs — structure and counts only, never note text:
+
+```bash
+python -m src.analyze_replies outputs/mimic/<tag>/raw_replies.jsonl
+python -m src.analyze_replies run_1024.jsonl run_1536.jsonl   # same chunks?
+```
+
+If loops are confirmed, the fix is `repetition_penalty` (~1.1) or
+`no_repeat_ngram_size`, not more budget. **Not yet confirmed against a real run** —
+the analysis has to happen where the replies are.
+
+## Not tuning further on n=5
+
+The F1 gap between smoke 2 and smoke 3 is 0.015 on 372 gold spans. That is within
+noise, and choosing a config on it would be fitting to randomness. Both runs are
+recorded above precisely so the comparison stays visible rather than being
+quietly resolved in favour of whichever ran last. The next real signal is n=50
+(2,600+ gold spans), not another n=5 iteration.
 
 ## Is the model over-extracting?
 
