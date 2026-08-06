@@ -93,6 +93,29 @@ capped generation is different: it means the model was still emitting entities
 when it hit `max_new_tokens`, so entities in that chunk may be missing and
 recall for the affected chunks is understated.
 
+## Extraction health
+
+Whether the model's output was understood at all. A zero score for an entity type
+is only meaningful if its items were reaching the scorer in the first place — an
+earlier revision silently discarded any item whose `type` string was not one of
+the six exact labels, which put `Duration` and `Reason` at exactly 0.0000.
+
+| | |
+|---|---|
+| chunks returning no usable JSON | 0 / 561 (0.0%) |
+| chunks returning an explicitly empty list | 20 |
+| chunks yielding zero entities | 20 / 561 (3.6%) |
+| JSON items emitted | 13,434 |
+| items dropped — unrecognized `type` | 0 |
+| items dropped — no usable span text | 0 |
+| items rescued by type normalization | 0 |
+| **entities extracted** | **13,434** |
+| entities extracted per chunk | 23.9 |
+
+A non-zero "dropped — unrecognized type" count means entities the model found
+were thrown away; the offending type strings are listed in the run's
+`parse_diag.json` and should be added to `prompt_mimic._TYPE_ALIASES`.
+
 ## Prediction alignment and dedupe
 
 Predictions arrive as entity *strings*, not character offsets, so each must be

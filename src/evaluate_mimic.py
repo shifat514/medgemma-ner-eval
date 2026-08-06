@@ -60,7 +60,7 @@ from .mimic_config import (
     SEED,
     TYPE_PRIORITY,
 )
-from .prompt_mimic import build_messages, parse_entities
+from .prompt_mimic import build_messages, parse_entities_diag
 from .report_mimic import write_report
 from .scoring import score, write_results
 
@@ -109,7 +109,8 @@ ALIGN_MODES = ("all-per-chunk", "first-per-chunk", "first-note")
 
 def predict_note(pipe, gold, text, chunk_words=CHUNK_WORDS,
                  overlap_words=OVERLAP_WORDS, run_fn=None, count_fn=None,
-                 gen_config=None, align_mode=ALIGN_MODE):
+                 gen_config=None, align_mode=ALIGN_MODE, diag_sink=None,
+                 reply_sink=None):
     """Predict BIO for one note. Returns ``(pred_bio, stats, pred_char_spans)``.
 
     `run_fn(pipe, chunk_text) -> reply` and `count_fn(pipe, reply) -> int|None`
@@ -161,6 +162,10 @@ def predict_note(pipe, gold, text, chunk_words=CHUNK_WORDS,
         "n_pred_mentions": 0, "n_pred_unique": 0, "n_pred_unique_chunksum": 0,
         "n_aligned_spans": 0, "n_unmatched": 0, "n_overlap_duplicates": 0,
         "n_pred_spans": 0, "n_pred_dropped_overlap": 0, "tokens_covered": 0,
+        # parse diagnostics — these are what turn a silent zero into a reason
+        "n_chunks_no_json": 0, "n_chunks_empty_list": 0,
+        "n_chunks_zero_entities": 0, "n_items_seen": 0, "n_items_kept": 0,
+        "n_items_rejected_type": 0, "n_items_aliased": 0, "n_items_no_text": 0,
     }
 
     if align_mode not in ALIGN_MODES:
@@ -185,12 +190,43 @@ def predict_note(pipe, gold, text, chunk_words=CHUNK_WORDS,
                 reply = run_fn(pipe, chunk_text, char_lo=char_lo, char_hi=char_hi)
             else:
                 reply = run_fn(pipe, chunk_text)
-            entities = parse_entities(reply)
+            entities, pdiag = parse_entities_diag(reply)
         except Exception as e:  # noqa: BLE001 - one bad chunk must not kill the run
             print(f"[warn] chunk {start}-{end} failed on {gold['note_id']}: {e}")
             st["n_chunk_failures"] += 1
+            st["n_chunks_zero_entities"] += 1
             chunk_results.append((start, ["O"] * (end - start)))
             continue
+
+        # Record what the parser saw. Counts go into per-note stats (PHI-free);
+        # the raw type strings go to the caller's sink, which writes them to the
+        # gitignored run directory.
+        st["n_items_seen"] += pdiag["n_items"]
+        st["n_items_kept"] += pdiag["n_kept"]
+        st["n_items_rejected_type"] += sum(pdiag["rejected_types"].values())
+        st["n_items_aliased"] += sum(pdiag["aliased_types"].values())
+        st["n_items_no_text"] += pdiag["n_no_text"]
+        if pdiag["shape"] in ("no-json", "empty-reply", "no-entity-list"):
+            st["n_chunks_no_json"] += 1
+        if pdiag["empty_list"]:
+            st["n_chunks_empty_list"] += 1
+        if not entities:
+            st["n_chunks_zero_entities"] += 1
+        if diag_sink is not None:
+            diag_sink["shapes"][pdiag["shape"]] = \
+                diag_sink["shapes"].get(pdiag["shape"], 0) + 1
+            for k, v in pdiag["rejected_types"].items():
+                diag_sink["rejected_types"][k] = \
+                    diag_sink["rejected_types"].get(k, 0) + v
+            for k, v in pdiag["aliased_types"].items():
+                diag_sink["aliased_types"][k] = \
+                    diag_sink["aliased_types"].get(k, 0) + v
+        if reply_sink is not None:
+            reply_sink.append({
+                "note_id": gold["note_id"], "chunk": [start, end],
+                "shape": pdiag["shape"], "n_kept": pdiag["n_kept"],
+                "reply": reply,
+            })
 
         if cap and isinstance(reply, str):
             n_gen = count_fn(pipe, reply)
@@ -251,6 +287,61 @@ def predict_note(pipe, gold, text, chunk_words=CHUNK_WORDS,
     return pred_bio, st, pred_char_spans
 
 
+def _print_parse_diagnostics(per_note, diag_sink):
+    """Explain under-extraction instead of leaving a silent zero.
+
+    Prints aggregate counts plus the model-emitted TYPE strings that were
+    rejected or renamed. Type labels are schema words, not note prose, and are
+    truncated defensively; the full record is written to the gitignored run dir.
+    """
+    def tot(key):
+        return sum(r.get(key, 0) or 0 for r in per_note)
+
+    chunks = tot("n_chunks")
+    if not chunks:
+        return
+
+    seen, kept = tot("n_items_seen"), tot("n_items_kept")
+    print("\n--- parse diagnostics " + "-" * 45)
+    print(f"  chunks                              {chunks:,}")
+    print(f"    returned no usable JSON           {tot('n_chunks_no_json'):,}"
+          f"  ({100.0 * tot('n_chunks_no_json') / chunks:.1f}%)")
+    print(f"    returned an explicitly empty list {tot('n_chunks_empty_list'):,}")
+    print(f"    yielded zero entities             {tot('n_chunks_zero_entities'):,}"
+          f"  ({100.0 * tot('n_chunks_zero_entities') / chunks:.1f}%)")
+    print(f"    generation hit max_new_tokens     {tot('n_cap_hits'):,}")
+    print(f"    inference/parse exception         {tot('n_chunk_failures'):,}")
+    # Units differ on purpose: one grouped item like {"medication":..,"dose":..}
+    # is 1 emitted item but yields 2 entities, so kept can exceed seen.
+    print(f"  JSON items emitted by the model     {seen:,}")
+    print(f"    dropped: unrecognized type        {tot('n_items_rejected_type'):,}")
+    print(f"    dropped: no usable span text      {tot('n_items_no_text'):,}")
+    print(f"    rescued by type normalization     {tot('n_items_aliased'):,}")
+    print(f"  entities extracted                  {kept:,}")
+    if chunks:
+        print(f"  entities extracted per chunk        {kept / chunks:.1f}"
+              "   (gold averages ~13)")
+
+    shapes = diag_sink.get("shapes") or {}
+    if shapes:
+        print("  reply shapes: " + ", ".join(
+            f"{k}={v}" for k, v in sorted(shapes.items(), key=lambda kv: -kv[1])))
+
+    for title, key in (("REJECTED type strings", "rejected_types"),
+                       ("type strings normalized", "aliased_types")):
+        table = diag_sink.get(key) or {}
+        if not table:
+            continue
+        print(f"  {title} (top 15):")
+        for name, count in sorted(table.items(), key=lambda kv: -kv[1])[:15]:
+            print(f"    {count:>6}  {name[:60]!r}")
+
+    if tot("n_items_rejected_type"):
+        print("  ^ every rejected item is an entity the model found and we threw"
+              " away.\n    Add the mapping to prompt_mimic._TYPE_ALIASES.")
+    print("-" * 67)
+
+
 def _load_done(path):
     """Existing per-note results, keyed by note_id (for --resume)."""
     done = {}
@@ -294,7 +385,7 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
              overlap_words=OVERLAP_WORDS, seed=SEED, model_id=None,
              model_name=None, resume=True, dump_errors=False,
              results_dir=None, output_dir=None, load_model=True, oracle=False,
-             align_mode=ALIGN_MODE):
+             align_mode=ALIGN_MODE, dump_replies=False):
     model_id = model_id or MODEL_ID
     model_name = model_name or MODEL_NAME
     if oracle:
@@ -324,6 +415,12 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
     os.makedirs(run_dir, exist_ok=True)
     per_note_path = os.path.join(run_dir, "per_note.jsonl")
     errors_path = os.path.join(run_dir, "errors.jsonl")
+    replies_path = os.path.join(run_dir, "raw_replies.jsonl")
+    diag_path = os.path.join(run_dir, "parse_diag.json")
+
+    # Aggregated across the run. Holds model-emitted type strings, so it is
+    # written to the gitignored run dir, never to per_note.jsonl.
+    diag_sink = {"shapes": {}, "rejected_types": {}, "aliased_types": {}}
 
     done = _load_done(per_note_path) if resume else {}
     todo = [r for r in records if r["note_id"] not in done]
@@ -349,6 +446,7 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
         iterator = todo
 
     for record in iterator:
+        reply_sink = [] if dump_replies else None
         gold = build_gold(record)
         gold_char = token_spans_to_char(bio_to_spans(gold["bio"]), gold["char_spans"])
 
@@ -357,7 +455,8 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
             pipe, gold, record["text"],
             chunk_words=chunk_words, overlap_words=overlap_words,
             run_fn=run_fn, count_fn=(lambda p, r: None) if oracle else None,
-            align_mode=align_mode,
+            align_mode=align_mode, diag_sink=diag_sink,
+            reply_sink=reply_sink,
         )
 
         # PHI-free: BIO tag arrays and integer counts only.
@@ -385,6 +484,12 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
         if dump_errors:
             _dump_errors(errors_path, record["note_id"], record["text"],
                          gold_char, pred_char)
+        if reply_sink:
+            # Raw model output. QUOTES NOTE TEXT (the prompt echoes the chunk),
+            # so this stays in the gitignored run dir.
+            with open(replies_path, "a", encoding="utf-8") as f:
+                for rec in reply_sink:
+                    f.write(json.dumps(rec) + "\n")
 
     # Score in sample order over exactly the requested notes.
     ordered = [done[r["note_id"]] for r in records if r["note_id"] in done]
@@ -394,6 +499,10 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
 
     gold_bio = [r["gold_bio"] for r in ordered]
     pred_bio = [r["pred_bio"] for r in ordered]
+    with open(diag_path, "w", encoding="utf-8") as f:
+        json.dump(diag_sink, f, indent=2, sort_keys=True)
+    _print_parse_diagnostics(ordered, diag_sink)
+
     report = score(gold_bio, pred_bio)
 
     df, csv_path = write_results(
@@ -426,6 +535,9 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
     print(f"\nWrote {csv_path}")
     print(f"Wrote {report_path}")
     print(f"Per-note state (gitignored): {per_note_path}")
+    print(f"Parse diagnostics (gitignored): {diag_path}")
+    if dump_replies:
+        print(f"Raw replies (gitignored, CONTAINS NOTE TEXT): {replies_path}")
     if dump_errors:
         print(f"Error dump (gitignored, CONTAINS NOTE TEXT): {errors_path}")
     return report
@@ -455,6 +567,10 @@ def main():
     parser.add_argument("--align-mode", choices=ALIGN_MODES, default=ALIGN_MODE,
                         help="how predicted strings are located in the text "
                              f"(default {ALIGN_MODE})")
+    parser.add_argument("--dump-replies", action="store_true",
+                        help="write every raw model reply to the gitignored "
+                             "run dir (CONTAINS NOTE TEXT). Use on a smoke "
+                             "run to see what the model actually emits")
     parser.add_argument("--oracle", action="store_true",
                         help="no model: feed the gold spans back through the "
                              "pipeline to measure its structural ceiling")
@@ -466,6 +582,7 @@ def main():
         seed=args.seed, model_id=args.model, model_name=args.model_name,
         resume=not args.no_resume, dump_errors=args.dump_errors,
         oracle=args.oracle, align_mode=args.align_mode,
+        dump_replies=args.dump_replies,
     )
 
 

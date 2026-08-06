@@ -130,6 +130,15 @@ def build_report(report, per_note, meta):
     pred_spans = _total(per_note, "n_pred_spans")
     pred_dropped = _total(per_note, "n_pred_dropped_overlap")
 
+    items_seen = _total(per_note, "n_items_seen")
+    items_kept = _total(per_note, "n_items_kept")
+    rejected_type = _total(per_note, "n_items_rejected_type")
+    aliased = _total(per_note, "n_items_aliased")
+    no_text = _total(per_note, "n_items_no_text")
+    ch_no_json = _total(per_note, "n_chunks_no_json")
+    ch_empty = _total(per_note, "n_chunks_empty_list")
+    ch_zero = _total(per_note, "n_chunks_zero_entities")
+
     cap_hits = _total(per_note, "n_cap_hits")
     failures = _total(per_note, "n_chunk_failures")
     notes_with_cap = sum(1 for r in per_note if (r.get("n_cap_hits") or 0) > 0)
@@ -222,6 +231,29 @@ so coverage is total by construction — no note content is truncated away. A
 capped generation is different: it means the model was still emitting entities
 when it hit `max_new_tokens`, so entities in that chunk may be missing and
 recall for the affected chunks is understated.
+
+## Extraction health
+
+Whether the model's output was understood at all. A zero score for an entity type
+is only meaningful if its items were reaching the scorer in the first place — an
+earlier revision silently discarded any item whose `type` string was not one of
+the six exact labels, which put `Duration` and `Reason` at exactly 0.0000.
+
+| | |
+|---|---|
+| chunks returning no usable JSON | {ch_no_json:,} / {chunks:,} ({0.0 if not chunks else 100.0 * ch_no_json / chunks:.1f}%) |
+| chunks returning an explicitly empty list | {ch_empty:,} |
+| chunks yielding zero entities | {ch_zero:,} / {chunks:,} ({0.0 if not chunks else 100.0 * ch_zero / chunks:.1f}%) |
+| JSON items emitted | {items_seen:,} |
+| items dropped — unrecognized `type` | {rejected_type:,} |
+| items dropped — no usable span text | {no_text:,} |
+| items rescued by type normalization | {aliased:,} |
+| **entities extracted** | **{items_kept:,}** |
+| entities extracted per chunk | {0.0 if not chunks else items_kept / chunks:.1f} |
+
+A non-zero "dropped — unrecognized type" count means entities the model found
+were thrown away; the offending type strings are listed in the run's
+`parse_diag.json` and should be added to `prompt_mimic._TYPE_ALIASES`.
 
 ## Prediction alignment and dedupe
 
