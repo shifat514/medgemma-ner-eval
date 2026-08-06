@@ -40,10 +40,38 @@ def load_medgemma(model_id=MODEL_ID, load_in_4bit=LOAD_IN_4BIT):
     )
 
 
-def run_medgemma(pipe, sentence, gen_config=None):
-    """Prompt MedGemma with one sentence and return the raw reply string."""
-    gen = dict(GEN_CONFIG)
+def run_messages(pipe, messages, gen_config=None, default_gen=None):
+    """Run pre-built chat `messages` and return the raw reply string.
+
+    Split out of ``run_medgemma`` so the MIMIC medication evaluation can supply
+    its own messages and its own generation config while sharing this call path.
+    """
+    gen = dict(default_gen if default_gen is not None else GEN_CONFIG)
     if gen_config:
         gen.update(gen_config)
-    output = pipe(text=build_messages(sentence), **gen)
+    output = pipe(text=messages, **gen)
     return output[0]["generated_text"][-1]["content"]
+
+
+def run_medgemma(pipe, sentence, gen_config=None):
+    """Prompt MedGemma with one sentence and return the raw reply string."""
+    return run_messages(pipe, build_messages(sentence), gen_config=gen_config)
+
+
+def count_tokens(pipe, text):
+    """Token count of `text` under the pipeline's tokenizer, or None.
+
+    Used to detect a reply that ran into max_new_tokens (i.e. was truncated
+    mid-JSON). Returns None if no tokenizer is reachable, so callers must treat
+    "unknown" as "not truncated" rather than crashing.
+    """
+    tok = getattr(pipe, "tokenizer", None)
+    if tok is None:
+        processor = getattr(pipe, "processor", None)
+        tok = getattr(processor, "tokenizer", None)
+    if tok is None:
+        return None
+    try:
+        return len(tok.encode(text, add_special_tokens=False))
+    except Exception:  # noqa: BLE001 - diagnostics must never break a run
+        return None

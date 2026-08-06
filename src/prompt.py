@@ -76,13 +76,19 @@ def _find_json_object(text):
     return None
 
 
-def parse_entities(reply):
+def parse_entities(reply, valid_types=None):
     """Parse a MedGemma reply into a list of ``(text, type)`` tuples.
 
     Tolerates markdown fences and surrounding prose. Returns ``[]`` on any
-    failure or malformed content. ``type`` is normalized to "Disease"/"Chemical";
-    entries with any other type are dropped.
+    failure or malformed content. ``type`` is normalized with ``.capitalize()``
+    and kept only if it is in `valid_types` (default: the Disease/Chemical space
+    from config.ENTITY_TYPES); entries with any other type are dropped.
+
+    `valid_types` lets the MIMIC medication evaluation reuse this parser against
+    its own six-type label space — see src/prompt_mimic.py.
     """
+    allowed = _VALID_TYPES if valid_types is None else set(valid_types)
+
     if not isinstance(reply, str) or not reply.strip():
         return []
 
@@ -118,6 +124,6 @@ def parse_entities(reply):
             continue
         text = text.strip()
         etype = etype.strip().capitalize()
-        if text and etype in _VALID_TYPES:
+        if text and etype in allowed:
             out.append((text, etype))
     return out

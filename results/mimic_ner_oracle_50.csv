@@ -1,0 +1,10 @@
+model,entity,precision,recall,f1,support
+medgemma-4b-it-ORACLE,Dose,0.7203,0.9532,0.8205,897
+medgemma-4b-it-ORACLE,Duration,0.7199,0.9364,0.814,236
+medgemma-4b-it-ORACLE,Frequency,0.635,0.8981,0.744,864
+medgemma-4b-it-ORACLE,Medication,0.7842,0.9674,0.8663,1811
+medgemma-4b-it-ORACLE,Mode,0.5604,0.9707,0.7106,784
+medgemma-4b-it-ORACLE,Reason,0.7244,0.9386,0.8177,619
+medgemma-4b-it-ORACLE,micro avg,0.6956,0.9491,0.8029,5211
+medgemma-4b-it-ORACLE,macro avg,0.6907,0.9441,0.7955,5211
+medgemma-4b-it-ORACLE,weighted avg,0.7048,0.9491,0.8066,5211

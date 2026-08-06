@@ -34,14 +34,49 @@ secrets.*
 results/*.csv
 results/*.json
 
+# ...except the committed MIMIC aggregate metrics + reports. These are
+# aggregate-only (precision/recall/f1/support) and contain NO note text and no
+# patient data, so they are safe to commit. Anything per-example lives in
+# outputs/ (below) and is never committed.
+!results/mimic_ner_*.csv
+!results/mimic_ner_*.md
+!results/mimic_ner_*.json
+
 # Model weights (downloaded at runtime)
 *.bin
 *.safetensors
 *.pt
 *.ckpt
 
-# Data (datasets are downloaded at runtime)
+# ============================================================================
+# REAL PATIENT DATA — NEVER COMMIT.
+#
+# MIMIC-IV notes are credentialed PhysioNet data. Note text, anything extracted
+# from a note, and any per-example dump that quotes a note must never enter git
+# history. These rules are deliberately broad: it is cheap to be over-ignored
+# and unfixable to leak a note.
+# ============================================================================
+
+# Extracted note samples (build_mimic_sample.py writes here)
 data/
+samples/
+
+# Per-note run state, resume files, and per-example error dumps. The error
+# dumps QUOTE NOTE TEXT — they must stay here and only here.
+outputs/
+
+# Any compressed CSV: discharge.csv.gz, NOTEEVENTS.csv.gz, label archives.
+*.csv.gz
+*.csv.bz2
+*.csv.zip
+
+# Note directories, however they get named
+notes/
+note/
+mimic*/
+*mimic-iv-note*/
+*discharge*
+NOTEEVENTS*
 
 # IDE
 .vscode/

@@ -49,15 +49,24 @@ def report_to_rows(report, model_name):
     return rows
 
 
-def write_results(report, model_name, results_dir=None):
-    """Write full_report.json + comparison.csv; return (DataFrame, csv_path)."""
+def write_results(report, model_name, results_dir=None,
+                  csv_name="comparison.csv", json_name="full_report.json"):
+    """Write the report JSON + metrics CSV; return (DataFrame, csv_path).
+
+    `csv_name`/`json_name` are parameterized so the MIMIC evaluation can write
+    mimic_ner_50.csv / mimic_ner_100.csv through this same writer. Defaults
+    preserve the original NCBI/BC5CDR behavior.
+
+    Output is aggregate metrics only — no example-level content — so it is safe
+    to commit.
+    """
     results_dir = results_dir or _config.RESULTS_DIR
     os.makedirs(results_dir, exist_ok=True)
 
-    with open(os.path.join(results_dir, "full_report.json"), "w") as f:
+    with open(os.path.join(results_dir, json_name), "w") as f:
         json.dump({model_name: report}, f, indent=2, cls=_NpEncoder)
 
     df = pd.DataFrame(report_to_rows(report, model_name))
-    csv_path = os.path.join(results_dir, "comparison.csv")
+    csv_path = os.path.join(results_dir, csv_name)
     df.to_csv(csv_path, index=False)
     return df, csv_path
