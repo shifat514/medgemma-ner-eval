@@ -34,7 +34,7 @@ discharge summaries have no annotations and were never considered.
 | `max_new_tokens` | n/a |
 | chunk size | 400 whitespace tokens |
 | chunk overlap | 80 whitespace tokens |
-| alignment mode | `first-per-chunk` |
+| alignment mode | `all-per-chunk` |
 | chunks run | 561 (avg 5.6 per note) |
 | scoring | `seqeval` entity-level `classification_report`, exact span match |
 
@@ -42,16 +42,16 @@ discharge summaries have no annotations and were never considered.
 
 | entity | precision | recall | f1 | support |
 |---|---|---|---|---|
-| Medication | 0.9011 | 0.9158 | 0.9084 | 3799 |
-| Dose | 0.8813 | 0.9029 | 0.8920 | 1875 |
-| Mode | 0.7655 | 0.8119 | 0.7880 | 1717 |
-| Frequency | 0.8225 | 0.8578 | 0.8398 | 1836 |
-| Duration | 0.8773 | 0.8934 | 0.8853 | 488 |
-| Reason | 0.8733 | 0.8726 | 0.8729 | 1287 |
+| Medication | 0.7724 | 0.9650 | 0.8580 | 3799 |
+| Dose | 0.7398 | 0.9552 | 0.8338 | 1875 |
+| Mode | 0.5724 | 0.9715 | 0.7204 | 1717 |
+| Frequency | 0.6462 | 0.9112 | 0.7562 | 1836 |
+| Duration | 0.7379 | 0.9344 | 0.8246 | 488 |
+| Reason | 0.7064 | 0.9347 | 0.8047 | 1287 |
 | | | | | |
-| **micro avg** | 0.8583 | 0.8817 | 0.8698 | 11002 |
-| **macro avg** | 0.8535 | 0.8757 | 0.8644 | 11002 |
-| **weighted avg** | 0.8591 | 0.8817 | 0.8702 | 11002 |
+| **micro avg** | 0.6976 | 0.9505 | 0.8046 | 11002 |
+| **macro avg** | 0.6958 | 0.9453 | 0.7996 | 11002 |
+| **weighted avg** | 0.7053 | 0.9505 | 0.8077 | 11002 |
 
 ## Gold type → label mapping
 
@@ -97,23 +97,23 @@ recall for the affected chunks is understated.
 
 Predictions arrive as entity *strings*, not character offsets, so each must be
 located in the text again. How that is done — `--align-mode`, here
-**`first-per-chunk`** — is the single biggest lever on achievable
+**`all-per-chunk`** — is the single biggest lever on achievable
 precision, and it was chosen by measurement (see
 `mimic_ner_align_mode_comparison.md`).
 
-Only the **first** occurrence of each distinct predicted string is tagged within each chunk. A drug named once by the model yields one span per chunk rather than one per mention, which is what keeps the predicted-span count close to the gold count. The 80-token chunk overlap still lets a genuinely repeated entity be caught in more than one window, so recall survives. Residual expansion above 1.00x below is that overlap effect plus multi-chunk notes.
+**Every** non-overlapping occurrence of a predicted string is tagged within the chunk that produced it, so one prediction of a common drug name becomes several predicted spans. This inflates the predicted-span count and depresses precision by an amount that is not the model's fault — measured at 1.72x expansion, costing ~16 points of micro F1 against `first-per-chunk`. Not the default; kept for comparison.
 
 | | |
 |---|---|
 | entity mentions emitted | 13,434 |
 | distinct (text, type) pairs, note-level | 7,772 |
 | distinct (text, type) pairs, summed per chunk | 10,440 |
-| spans produced by alignment, before dedupe | 13,342 |
-| **multi-occurrence expansion (within chunk)** | **1.28x** |
+| spans produced by alignment, before dedupe | 17,940 |
+| **multi-occurrence expansion (within chunk)** | **1.72x** |
 | emitted strings matching nothing in their window | 81 (0.8%) |
-| duplicate spans removed by overlap dedupe | 2,041 |
-| spans dropped as partially overlapping another | 0 |
-| **final predicted spans scored** | **11,301** |
+| duplicate spans removed by overlap dedupe | 2,750 |
+| spans dropped as partially overlapping another | 199 |
+| **final predicted spans scored** | **14,991** |
 
 Compare **final predicted spans scored** against the gold support in the Results
 table: the closer those two numbers, the better calibrated the alignment. Any gap

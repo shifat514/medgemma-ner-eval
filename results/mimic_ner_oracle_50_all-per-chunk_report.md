@@ -1,4 +1,4 @@
-# Harness ceiling (ORACLE, no model) — MIMIC-IV medication NER (n=100)
+# Harness ceiling (ORACLE, no model) — MIMIC-IV medication NER (n=50)
 
 > **This is not a model evaluation.** No model was run. The gold span
 > strings were fed back through the identical pipeline to measure the
@@ -13,13 +13,13 @@ this file.
 
 | | |
 |---|---|
-| notes evaluated | **100** |
+| notes evaluated | **50** |
 | sampling seed | `13` |
 | eligible pool | 598 of 600 annotated notes (2 excluded, below) |
 | selection | `random.Random(seed).sample(sorted(pool), 100)`; the n=50 set is the **first 50 of that same 100-note draw**, so it is a strict subset and the two runs are directly comparable |
 | source notes | MIMIC-IV-Note v2.2 `discharge.csv.gz` |
 | source labels | Medication Extraction Labels for MIMIC-IV-Note v1.0.0 |
-| whitespace tokens scored | 172,057 |
+| whitespace tokens scored | 79,769 |
 
 Only the ~600 notes that carry gold labels were eligible; the other ~331,000
 discharge summaries have no annotations and were never considered.
@@ -34,24 +34,24 @@ discharge summaries have no annotations and were never considered.
 | `max_new_tokens` | n/a |
 | chunk size | 400 whitespace tokens |
 | chunk overlap | 80 whitespace tokens |
-| alignment mode | `first-per-chunk` |
-| chunks run | 561 (avg 5.6 per note) |
+| alignment mode | `all-per-chunk` |
+| chunks run | 262 (avg 5.2 per note) |
 | scoring | `seqeval` entity-level `classification_report`, exact span match |
 
 ## Results
 
 | entity | precision | recall | f1 | support |
 |---|---|---|---|---|
-| Medication | 0.9011 | 0.9158 | 0.9084 | 3799 |
-| Dose | 0.8813 | 0.9029 | 0.8920 | 1875 |
-| Mode | 0.7655 | 0.8119 | 0.7880 | 1717 |
-| Frequency | 0.8225 | 0.8578 | 0.8398 | 1836 |
-| Duration | 0.8773 | 0.8934 | 0.8853 | 488 |
-| Reason | 0.8733 | 0.8726 | 0.8729 | 1287 |
+| Medication | 0.7842 | 0.9674 | 0.8663 | 1811 |
+| Dose | 0.7203 | 0.9532 | 0.8205 | 897 |
+| Mode | 0.5604 | 0.9707 | 0.7106 | 784 |
+| Frequency | 0.6350 | 0.8981 | 0.7440 | 864 |
+| Duration | 0.7199 | 0.9364 | 0.8140 | 236 |
+| Reason | 0.7244 | 0.9386 | 0.8177 | 619 |
 | | | | | |
-| **micro avg** | 0.8583 | 0.8817 | 0.8698 | 11002 |
-| **macro avg** | 0.8535 | 0.8757 | 0.8644 | 11002 |
-| **weighted avg** | 0.8591 | 0.8817 | 0.8702 | 11002 |
+| **micro avg** | 0.6956 | 0.9491 | 0.8029 | 5211 |
+| **macro avg** | 0.6907 | 0.9441 | 0.7955 | 5211 |
+| **weighted avg** | 0.7048 | 0.9491 | 0.8066 | 5211 |
 
 ## Gold type → label mapping
 
@@ -79,11 +79,11 @@ token windows.
 
 | | |
 |---|---|
-| tokens in sample | 172,057 |
-| tokens actually processed | 172,057 |
+| tokens in sample | 79,769 |
+| tokens actually processed | 79,769 |
 | **note content dropped** | **0 tokens (0.00%)** |
-| chunks where generation hit `max_new_tokens` | 0 / 561 (0.0%) |
-| notes affected by ≥1 capped generation | 0 / 100 |
+| chunks where generation hit `max_new_tokens` | 0 / 262 (0.0%) |
+| notes affected by ≥1 capped generation | 0 / 50 |
 | chunks that failed inference or parsing | 0 |
 | notes with no result (excluded from scoring) | 0 |
 
@@ -97,23 +97,23 @@ recall for the affected chunks is understated.
 
 Predictions arrive as entity *strings*, not character offsets, so each must be
 located in the text again. How that is done — `--align-mode`, here
-**`first-per-chunk`** — is the single biggest lever on achievable
+**`all-per-chunk`** — is the single biggest lever on achievable
 precision, and it was chosen by measurement (see
 `mimic_ner_align_mode_comparison.md`).
 
-Only the **first** occurrence of each distinct predicted string is tagged within each chunk. A drug named once by the model yields one span per chunk rather than one per mention, which is what keeps the predicted-span count close to the gold count. The 80-token chunk overlap still lets a genuinely repeated entity be caught in more than one window, so recall survives. Residual expansion above 1.00x below is that overlap effect plus multi-chunk notes.
+**Every** non-overlapping occurrence of a predicted string is tagged within the chunk that produced it, so one prediction of a common drug name becomes several predicted spans. This inflates the predicted-span count and depresses precision by an amount that is not the model's fault — measured at 1.72x expansion, costing ~16 points of micro F1 against `first-per-chunk`. Not the default; kept for comparison.
 
 | | |
 |---|---|
-| entity mentions emitted | 13,434 |
-| distinct (text, type) pairs, note-level | 7,772 |
-| distinct (text, type) pairs, summed per chunk | 10,440 |
-| spans produced by alignment, before dedupe | 13,342 |
-| **multi-occurrence expansion (within chunk)** | **1.28x** |
-| emitted strings matching nothing in their window | 81 (0.8%) |
-| duplicate spans removed by overlap dedupe | 2,041 |
-| spans dropped as partially overlapping another | 0 |
-| **final predicted spans scored** | **11,301** |
+| entity mentions emitted | 6,380 |
+| distinct (text, type) pairs, note-level | 3,785 |
+| distinct (text, type) pairs, summed per chunk | 5,075 |
+| spans produced by alignment, before dedupe | 8,541 |
+| **multi-occurrence expansion (within chunk)** | **1.68x** |
+| emitted strings matching nothing in their window | 33 (0.7%) |
+| duplicate spans removed by overlap dedupe | 1,340 |
+| spans dropped as partially overlapping another | 91 |
+| **final predicted spans scored** | **7,110** |
 
 Compare **final predicted spans scored** against the gold support in the Results
 table: the closer those two numbers, the better calibrated the alignment. Any gap
@@ -127,19 +127,19 @@ stitching, and the count removed is reported above.
 
 | | |
 |---|---|
-| annotation rows read from the label CSVs | 11,651 |
-| − exact duplicate rows (same span+type, different `Group`) | −295 |
-| = unique `(start, end, type)` | 11,356 |
-| − **type conflicts resolved by priority** | **−11** |
-| = one type per `(start, end)` | 11,345 |
-| − spans out of bounds for the note text | −2 |
-| − spans covering no whitespace token | −10 |
-| = spans mapped onto tokens | 11,333 |
-| − spans dropped as partially overlapping another | −331 |
-| **= gold spans scored (support)** | **11,002** |
-| *of those, boundary snapped >1 char to token edges* | *960 (8.5%)* |
+| annotation rows read from the label CSVs | 5,526 |
+| − exact duplicate rows (same span+type, different `Group`) | −154 |
+| = unique `(start, end, type)` | 5,372 |
+| − **type conflicts resolved by priority** | **−3** |
+| = one type per `(start, end)` | 5,369 |
+| − spans out of bounds for the note text | −0 |
+| − spans covering no whitespace token | −3 |
+| = spans mapped onto tokens | 5,366 |
+| − spans dropped as partially overlapping another | −155 |
+| **= gold spans scored (support)** | **5,211** |
+| *of those, boundary snapped >1 char to token edges* | *462 (8.6%)* |
 
-Counts above are for the 100 sampled notes. Corpus-wide across all 600 label
+Counts above are for the 50 sampled notes. Corpus-wide across all 600 label
 files: 64,106 annotation rows, of which 4,408 are exact `(start, end, type)`
 duplicates carrying a different `Group` (one shared `Mode` span reused by several
 medication groups), and ~58 `(start, end)` pairs carry two different annotation
@@ -163,7 +163,7 @@ flattened onto whitespace tokens. `--oracle` measures that ceiling by feeding th
 gold span strings back through the identical pipeline:
 
 ```
-python -m src.evaluate_mimic --oracle --n 100
+python -m src.evaluate_mimic --oracle --n 50
 ```
 
 Reading MedGemma's scores against that ceiling separates model error from harness
@@ -190,7 +190,7 @@ on. Both were excluded before sampling, leaving a pool of 598.
 
 ## Caveats
 
-- **Small sample.** n=100 notes. Per-type confidence intervals are wide,
+- **Small sample.** n=50 notes. Per-type confidence intervals are wide,
   especially for `Duration` (the rarest type, 2,797 of 64,106 annotations
   corpus-wide). Differences of a few F1 points between the n=50 and n=100 runs
   should not be read as signal.

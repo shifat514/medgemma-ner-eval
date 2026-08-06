@@ -124,7 +124,8 @@ def test_entity_in_overlap_region_is_deduped():
 
 def test_multi_occurrence_expansion_is_measured():
     # "Drugzol" appears 4 times inside one chunk; the model names it once, and
-    # per-chunk alignment still tags all 4. The stats must expose that.
+    # all-per-chunk alignment tags all 4. The stats must expose that — this
+    # expansion is exactly why first-per-chunk became the default.
     words = [f"w{i}" for i in range(40)]
     for i in (3, 11, 22, 33):
         words[i] = "Drugzol"
@@ -135,6 +136,7 @@ def test_multi_occurrence_expansion_is_measured():
     _, st, _ = predict_note(
         None, gold, text, chunk_words=400, overlap_words=80,
         run_fn=_fake_run(reply), count_fn=_no_count,
+        align_mode="all-per-chunk",
     )
     assert st["n_pred_mentions"] == 1
     assert st["n_pred_unique"] == 1
@@ -317,3 +319,106 @@ def test_report_is_written_and_has_no_note_text(tmp_path):
                     "## Gold type", "## Chunking", "## Caveats"):
         assert section in md
     assert "LLM-generated" in md
+
+
+# --- alignment modes ------------------------------------------------------
+
+def _repeated_note(n_repeats=4, n_tokens=40):
+    """A note where one drug name recurs inside a single chunk."""
+    words = [f"w{i}" for i in range(n_tokens)]
+    for i in range(3, 3 + n_repeats * 8, 8):
+        words[i] = "Drugzol"
+    return " ".join(words)
+
+
+def test_align_mode_default_is_first_per_chunk():
+    from src.mimic_config import ALIGN_MODE, DEFAULT_ALIGN_MODE
+    assert DEFAULT_ALIGN_MODE == "first-per-chunk"
+    assert ALIGN_MODE == "first-per-chunk"
+
+
+def test_all_per_chunk_tags_every_occurrence():
+    text = _repeated_note()
+    gold = build_gold({"note_id": "s", "text": text, "spans": []})
+    reply = json.dumps({"entities": [{"text": "Drugzol", "type": "Medication"}]})
+    _, st, _ = predict_note(None, gold, text, run_fn=_fake_run(reply),
+                            count_fn=_no_count, align_mode="all-per-chunk")
+    assert st["n_pred_spans"] == 4
+
+
+def test_first_per_chunk_tags_one_per_chunk():
+    text = _repeated_note()
+    gold = build_gold({"note_id": "s", "text": text, "spans": []})
+    reply = json.dumps({"entities": [{"text": "Drugzol", "type": "Medication"}]})
+    _, st, _ = predict_note(None, gold, text, chunk_words=400, overlap_words=80,
+                            run_fn=_fake_run(reply), count_fn=_no_count,
+                            align_mode="first-per-chunk")
+    assert st["n_chunks"] == 1
+    assert st["n_pred_spans"] == 1
+
+
+def test_first_note_tags_one_per_note_across_chunks():
+    # 500 tokens -> 2 chunks; the drug recurs in both.
+    words = [f"w{i}" for i in range(500)]
+    for i in (10, 100, 350, 450):
+        words[i] = "Drugzol"
+    text = " ".join(words)
+    gold = build_gold({"note_id": "s", "text": text, "spans": []})
+    reply = json.dumps({"entities": [{"text": "Drugzol", "type": "Medication"}]})
+
+    _, st_note, _ = predict_note(None, gold, text, chunk_words=400,
+                                 overlap_words=80, run_fn=_fake_run(reply),
+                                 count_fn=_no_count, align_mode="first-note")
+    assert st_note["n_chunks"] > 1
+    assert st_note["n_pred_spans"] == 1          # one span for the whole note
+    assert st_note["n_overlap_duplicates"] == 0  # nothing stitched, so none
+    # n_aligned_spans must describe what was actually scored, not discarded
+    # per-chunk work.
+    assert st_note["n_aligned_spans"] == 1
+
+
+def test_modes_are_ordered_by_predicted_span_count():
+    words = [f"w{i}" for i in range(500)]
+    for i in (10, 100, 350, 450):
+        words[i] = "Drugzol"
+    text = " ".join(words)
+    gold = build_gold({"note_id": "s", "text": text, "spans": []})
+    reply = json.dumps({"entities": [{"text": "Drugzol", "type": "Medication"}]})
+    counts = {}
+    for mode in ("all-per-chunk", "first-per-chunk", "first-note"):
+        _, st, _ = predict_note(None, gold, text, chunk_words=400,
+                                overlap_words=80, run_fn=_fake_run(reply),
+                                count_fn=_no_count, align_mode=mode)
+        counts[mode] = st["n_pred_spans"]
+    assert counts["all-per-chunk"] > counts["first-per-chunk"] >= counts["first-note"]
+
+
+def test_unknown_align_mode_raises():
+    import pytest
+    text = "Lasix 40mg IV"
+    gold = build_gold({"note_id": "s", "text": text, "spans": []})
+    with pytest.raises(ValueError, match="align_mode"):
+        predict_note(None, gold, text, run_fn=_fake_run('{"entities": []}'),
+                     count_fn=_no_count, align_mode="nonsense")
+
+
+def test_run_tag_separates_align_modes():
+    from src.evaluate_mimic import run_tag
+    a = run_tag(13, 400, 80, "m", "all-per-chunk")
+    b = run_tag(13, 400, 80, "m", "first-per-chunk")
+    assert a != b, "resume caches from different modes must not collide"
+
+
+def test_default_mode_keeps_plain_result_filenames(tmp_path):
+    sample = _write_sample(tmp_path, 3)
+    _run(tmp_path, sample, n=3)
+    names = {p.name for p in (tmp_path / "results").iterdir()}
+    assert "mimic_ner_3.csv" in names
+    assert not any("first-per-chunk" in n for n in names)
+
+
+def test_non_default_mode_suffixes_result_filenames(tmp_path):
+    sample = _write_sample(tmp_path, 3)
+    _run(tmp_path, sample, n=3, align_mode="all-per-chunk")
+    names = {p.name for p in (tmp_path / "results").iterdir()}
+    assert "mimic_ner_3_all-per-chunk.csv" in names

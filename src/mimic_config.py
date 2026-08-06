@@ -115,6 +115,23 @@ MAX_SAMPLE = max(SAMPLE_SIZES)
 CHUNK_WORDS = int(os.environ.get("MIMIC_CHUNK_WORDS", "400"))
 OVERLAP_WORDS = int(os.environ.get("MIMIC_OVERLAP_WORDS", "80"))
 
+# How a predicted string is located in the text — the biggest lever on the
+# precision ceiling. Compare candidates with `--oracle` (no GPU, ~7 s each).
+#   all-per-chunk   every occurrence within the producing chunk
+#   first-per-chunk first occurrence within each chunk
+#   first-note      first occurrence in the note, predictions pooled
+#
+# Default chosen by measurement, not intuition. Oracle ceiling over the 100-note
+# sample (micro P / R / F1):
+#   first-per-chunk  0.8583 / 0.8817 / 0.8698   <- default
+#   all-per-chunk    0.6976 / 0.9505 / 0.8046
+#   first-note       0.7917 / 0.5524 / 0.6507
+# first-per-chunk wins micro F1 by +6.5 points and wins on all six types
+# individually: trading 6.9 points of recall for 18.6 of precision. See
+# results/mimic_ner_align_mode_comparison.md.
+DEFAULT_ALIGN_MODE = "first-per-chunk"
+ALIGN_MODE = os.environ.get("MIMIC_ALIGN_MODE", DEFAULT_ALIGN_MODE)
+
 # --- Model -----------------------------------------------------------------
 
 MODEL_ID = os.environ.get("MEDGEMMA_MODEL", "google/medgemma-4b-it")

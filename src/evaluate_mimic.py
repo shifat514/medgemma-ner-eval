@@ -44,8 +44,10 @@ from .chunking import (
 )
 from .datasets.mimic_meds import build_gold, load_sample
 from .mimic_config import (
+    ALIGN_MODE,
     CAP_MARGIN,
     CHUNK_WORDS,
+    DEFAULT_ALIGN_MODE,
     ENTITY_TYPES,
     GEN_CONFIG,
     LOAD_IN_4BIT,
@@ -63,10 +65,15 @@ from .report_mimic import write_report
 from .scoring import score, write_results
 
 
-def run_tag(seed, chunk_words, overlap_words, model_name):
-    """Cache/run directory name. Excludes sample size so runs share work."""
+def run_tag(seed, chunk_words, overlap_words, model_name, align_mode=ALIGN_MODE):
+    """Cache/run directory name. Excludes sample size so runs share work.
+
+    Includes the alignment mode: results computed under different modes are not
+    interchangeable, so they must never land in the same resume cache.
+    """
     safe_model = model_name.replace("/", "_")
-    return f"{safe_model}_seed{seed}_cw{chunk_words}_ov{overlap_words}"
+    return (f"{safe_model}_seed{seed}_cw{chunk_words}_ov{overlap_words}"
+            f"_{align_mode}")
 
 
 def _norm_key(text, etype):
@@ -97,14 +104,30 @@ def make_oracle_run_fn(text, gold_char_spans):
     return run
 
 
+ALIGN_MODES = ("all-per-chunk", "first-per-chunk", "first-note")
+
+
 def predict_note(pipe, gold, text, chunk_words=CHUNK_WORDS,
                  overlap_words=OVERLAP_WORDS, run_fn=None, count_fn=None,
-                 gen_config=None):
+                 gen_config=None, align_mode=ALIGN_MODE):
     """Predict BIO for one note. Returns ``(pred_bio, stats, pred_char_spans)``.
 
     `run_fn(pipe, chunk_text) -> reply` and `count_fn(pipe, reply) -> int|None`
     are injectable for testing. Any inference/parse failure on a chunk degrades
     that chunk to no entities rather than killing the note or the run.
+
+    `align_mode` controls how predicted strings are located in the text — the
+    single biggest lever on the precision ceiling (see --oracle):
+
+    - ``all-per-chunk``: tag every occurrence of a predicted string within the
+      chunk that produced it. Maximum recall; inflates the predicted-span count
+      when a drug name recurs.
+    - ``first-per-chunk``: tag only the first occurrence within each chunk. One
+      span per distinct string per chunk.
+    - ``first-note``: pool the predictions from every chunk and tag only the
+      first occurrence in the whole note. One span per distinct string per note,
+      so a note where gold annotates the same string repeatedly cannot be
+      fully recovered.
 
     Stats collected for honest reporting:
       n_chunks, n_chunk_failures, n_cap_hits (generation hit max_new_tokens),
@@ -140,8 +163,14 @@ def predict_note(pipe, gold, text, chunk_words=CHUNK_WORDS,
         "n_pred_spans": 0, "n_pred_dropped_overlap": 0, "tokens_covered": 0,
     }
 
+    if align_mode not in ALIGN_MODES:
+        raise ValueError(f"align_mode must be one of {ALIGN_MODES}, got {align_mode!r}")
+    first_only = align_mode == "first-per-chunk"
+
     chunk_results = []
     unique_keys = set()
+    pooled = []                  # first-note mode: pooled predictions, in order
+    unique_keys_before = set()   # membership guard for `pooled` ordering
     covered = set()
 
     for start, end in windows:
@@ -172,9 +201,21 @@ def predict_note(pipe, gold, text, chunk_words=CHUNK_WORDS,
         chunk_keys = {_norm_key(t, ty) for t, ty in entities}
         unique_keys |= chunk_keys
         st["n_pred_unique_chunksum"] += len(chunk_keys)
+        for key in sorted(chunk_keys):
+            if key not in unique_keys_before:
+                pooled.append(key)
+                unique_keys_before.add(key)
 
-        chunk_bio = align_entities_to_bio(tokens[start:end], entities)
-        st["n_aligned_spans"] += len(bio_to_spans(chunk_bio))
+        # first-note pools predictions and aligns once over the whole note below,
+        # so per-chunk alignment would be wasted work and its span count would
+        # misreport what actually gets scored.
+        if align_mode == "first-note":
+            chunk_bio = ["O"] * (end - start)
+        else:
+            chunk_bio = align_entities_to_bio(
+                tokens[start:end], entities, first_only=first_only
+            )
+            st["n_aligned_spans"] += len(bio_to_spans(chunk_bio))
 
         # Emitted (text, type) pairs that match nothing in this window: the model
         # paraphrased, hallucinated, or the span straddled the window edge.
@@ -190,7 +231,16 @@ def predict_note(pipe, gold, text, chunk_words=CHUNK_WORDS,
     st["n_pred_unique"] = len(unique_keys)
     st["tokens_covered"] = len(covered)
 
-    merged, duplicates = merge_chunk_spans(chunk_results)
+    if align_mode == "first-note":
+        # Pool every chunk's predictions and align once over the full note,
+        # taking only the first occurrence of each distinct string. There are no
+        # per-chunk BIO sequences to stitch, so no overlap duplicates arise.
+        note_bio = align_entities_to_bio(tokens, pooled, first_only=True)
+        merged = bio_to_spans(note_bio)
+        duplicates = 0
+        st["n_aligned_spans"] = len(merged)
+    else:
+        merged, duplicates = merge_chunk_spans(chunk_results)
     st["n_overlap_duplicates"] = duplicates
 
     pred_bio, dropped = spans_to_bio(len(tokens), merged, priority=TYPE_PRIORITY)
@@ -243,7 +293,8 @@ def _dump_errors(path, note_id, text, gold_char, pred_char):
 def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
              overlap_words=OVERLAP_WORDS, seed=SEED, model_id=None,
              model_name=None, resume=True, dump_errors=False,
-             results_dir=None, output_dir=None, load_model=True, oracle=False):
+             results_dir=None, output_dir=None, load_model=True, oracle=False,
+             align_mode=ALIGN_MODE):
     model_id = model_id or MODEL_ID
     model_name = model_name or MODEL_NAME
     if oracle:
@@ -263,8 +314,12 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
     label = f"smoke_{n_notes}" if limit else str(n_notes)
     if oracle:
         label = f"oracle_{label}"
+    # Default mode keeps the plain filenames (mimic_ner_50.csv); a non-default
+    # mode is suffixed so comparison runs never overwrite the headline results.
+    if align_mode != DEFAULT_ALIGN_MODE:
+        label = f"{label}_{align_mode}"
 
-    tag = run_tag(seed, chunk_words, overlap_words, model_name)
+    tag = run_tag(seed, chunk_words, overlap_words, model_name, align_mode)
     run_dir = os.path.join(output_dir, tag)
     os.makedirs(run_dir, exist_ok=True)
     per_note_path = os.path.join(run_dir, "per_note.jsonl")
@@ -277,6 +332,7 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
     print(f"notes:    {len(records)}  (cached {len(records) - len(todo)}, "
           f"to run {len(todo)})")
     print(f"chunking: {chunk_words} tokens / {overlap_words} overlap")
+    print(f"align:    {align_mode}")
     print(f"model:    {model_id}  4bit={LOAD_IN_4BIT}  {GEN_CONFIG}")
     print(f"run dir:  {run_dir}")
 
@@ -301,6 +357,7 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
             pipe, gold, record["text"],
             chunk_words=chunk_words, overlap_words=overlap_words,
             run_fn=run_fn, count_fn=(lambda p, r: None) if oracle else None,
+            align_mode=align_mode,
         )
 
         # PHI-free: BIO tag arrays and integer counts only.
@@ -357,6 +414,7 @@ def run_eval(n=None, limit=None, sample_file=None, chunk_words=CHUNK_WORDS,
         "gen_config": dict(GEN_CONFIG),
         "chunk_words": chunk_words,
         "overlap_words": overlap_words,
+        "align_mode": align_mode,
         "entity_types": list(ENTITY_TYPES),
         "notes_missing": missing,
         "run_dir": run_dir,
@@ -394,6 +452,9 @@ def main():
     parser.add_argument("--dump-errors", action="store_true",
                         help="write per-example FP/FN to the gitignored run dir "
                              "(CONTAINS NOTE TEXT)")
+    parser.add_argument("--align-mode", choices=ALIGN_MODES, default=ALIGN_MODE,
+                        help="how predicted strings are located in the text "
+                             f"(default {ALIGN_MODE})")
     parser.add_argument("--oracle", action="store_true",
                         help="no model: feed the gold spans back through the "
                              "pipeline to measure its structural ceiling")
@@ -404,7 +465,7 @@ def main():
         chunk_words=args.chunk_words, overlap_words=args.overlap_words,
         seed=args.seed, model_id=args.model, model_name=args.model_name,
         resume=not args.no_resume, dump_errors=args.dump_errors,
-        oracle=args.oracle,
+        oracle=args.oracle, align_mode=args.align_mode,
     )
 
 

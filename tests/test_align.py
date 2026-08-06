@@ -65,3 +65,44 @@ def test_empty_entities_all_O():
 def test_punctuation_only_span_ignored():
     tokens = ["a", "b"]
     assert align_entities_to_bio(tokens, [("...", "Disease")]) == ["O", "O"]
+
+
+# --- first_only (added for the MIMIC --align-mode work) --------------------
+
+def test_first_only_tags_just_the_first_occurrence():
+    tokens = ["cancer", "and", "more", "cancer", "here"]
+    bio = align_entities_to_bio(tokens, [("cancer", "Disease")], first_only=True)
+    assert bio == ["B-Disease", "O", "O", "O", "O"]
+
+
+def test_first_only_default_is_off_so_existing_behavior_is_unchanged():
+    tokens = ["cancer", "and", "more", "cancer"]
+    assert align_entities_to_bio(tokens, [("cancer", "Disease")]) == \
+        ["B-Disease", "O", "O", "B-Disease"]
+
+
+def test_first_only_multi_word_span():
+    tokens = ["lung", "cancer", "then", "lung", "cancer"]
+    bio = align_entities_to_bio(tokens, [("lung cancer", "Disease")], first_only=True)
+    assert bio == ["B-Disease", "I-Disease", "O", "O", "O"]
+
+
+def test_first_only_still_tags_each_distinct_entity():
+    tokens = ["aspirin", "aspirin", "asthma", "asthma"]
+    ents = [("aspirin", "Chemical"), ("asthma", "Disease")]
+    bio = align_entities_to_bio(tokens, ents, first_only=True)
+    assert bio == ["B-Chemical", "O", "B-Disease", "O"]
+
+
+def test_first_only_skips_blocked_tokens_to_find_a_free_occurrence():
+    # "lung cancer" claims tokens 0-1; a later first_only "cancer" must land on
+    # token 3, not give up because token 1 was taken.
+    tokens = ["lung", "cancer", "and", "cancer"]
+    ents = [("lung cancer", "Disease"), ("cancer", "Chemical")]
+    bio = align_entities_to_bio(tokens, ents, first_only=True)
+    assert bio == ["B-Disease", "I-Disease", "O", "B-Chemical"]
+
+
+def test_first_only_absent_span_leaves_all_O():
+    assert align_entities_to_bio(["a", "b"], [("zzz", "Disease")], first_only=True) \
+        == ["O", "O"]

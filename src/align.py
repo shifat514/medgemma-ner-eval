@@ -19,13 +19,18 @@ def normalize_token(token):
     return _STRIP_RE.sub("", token).lower()
 
 
-def align_entities_to_bio(tokens, entities):
+def align_entities_to_bio(tokens, entities, first_only=False):
     """Convert predicted ``(text, type)`` spans into a BIO tag list over `tokens`.
 
     - Matching is case/punctuation-insensitive (see ``normalize_token``).
     - A multi-word span must match a contiguous run of tokens.
     - Every non-overlapping occurrence of a span is tagged; tokens already tagged
       by an earlier entity are never overwritten (first-come-first-served).
+
+    `first_only=True` stops after the first match for each entity instead of
+    tagging every occurrence. Default False preserves the original behavior the
+    NCBI/BC5CDR evaluation depends on; the MIMIC evaluation uses it to trade the
+    multi-occurrence expansion against recall (see --align-mode).
     """
     norm = [normalize_token(t) for t in tokens]
     n = len(tokens)
@@ -43,6 +48,8 @@ def align_entities_to_bio(tokens, entities):
                 bio[i] = f"B-{etype}"
                 for k in range(1, length):
                     bio[i + k] = f"I-{etype}"
+                if first_only:
+                    break
                 i += length  # non-overlapping: skip past the matched run
             else:
                 i += 1

@@ -159,11 +159,11 @@ note text ──▶ \S+ tokens (+ char spans) ──▶ gold BIO from label char
 
 Two decisions keep the scoring honest:
 
-- **Alignment is per chunk.** `align_entities_to_bio` tags *every* occurrence of a
-  predicted string; run on a whole 10k-char note, one prediction of `aspirin`
-  becomes ~15 predicted spans. Per-chunk alignment confines that to the window the
-  model actually read. It **narrows but does not eliminate** the effect, so the
-  report prints the measured expansion factor.
+- **Alignment is per chunk, first-occurrence-only.** The model returns *strings*,
+  not offsets, so each must be found in the text again. Tagging every occurrence
+  turns one prediction of `aspirin` into ~15 spans; restricting to the first
+  occurrence within each chunk keeps the predicted-span count within 3% of the
+  gold count. Chosen by measurement — see below.
 - **Predictions are deduped, not just gold.** Overlapping windows re-read the same
   tokens, so entities in an overlap get predicted twice. Merging dedupes on
   `(start, end, type)` after stitching, and reports how many were removed.
@@ -171,13 +171,32 @@ Two decisions keep the scoring honest:
 ### The harness has a structural ceiling — measure it
 
 `--oracle` feeds the gold spans back through the identical pipeline. No model, no
-GPU, runs in seconds. On n=100 it scores **micro P=0.698, R=0.951, F1=0.805** —
-so a *perfect* extractor still loses ~30 points of precision to string-matching
-alignment. Read MedGemma's numbers against that, not against 1.0.
+GPU, ~7 seconds. Whatever it loses is harness error, not model error, so read
+MedGemma's numbers against it rather than against 1.0.
 
 ```bash
 make mimic-oracle       # python -m src.evaluate_mimic --oracle --n 100
 ```
+
+It is also how the alignment default was chosen. Oracle ceiling on n=100:
+
+| `--align-mode` | micro P | micro R | micro F1 |
+|---|---|---|---|
+| **`first-per-chunk`** (default) | **0.8583** | 0.8817 | **0.8698** |
+| `all-per-chunk` | 0.6976 | **0.9505** | 0.8046 |
+| `first-note` | 0.7917 | 0.5524 | 0.6507 |
+
+`first-per-chunk` wins by **+6.5 micro F1** and wins on all six entity types
+individually, trading 6.9 points of recall for 18.6 of precision. Full breakdown
+and reasoning: [results/mimic_ner_align_mode_comparison.md](results/mimic_ner_align_mode_comparison.md).
+
+The ceiling is still only 0.87, not 1.0 — 1.28x expansion remains. Closing that
+needs the model to emit character offsets instead of strings, which is a
+prompt-and-parse change, not an alignment one.
+
+**Results are not comparable across modes.** The resume cache is keyed on the
+mode, and non-default modes get a filename suffix, so the two can never silently
+mix.
 
 ### Sampling
 
@@ -239,7 +258,8 @@ results from different settings. The resume file holds BIO tag arrays and intege
 counts only — no note text.
 
 CLI: `--n N`, `--limit N` (smoke), `--chunk-words`, `--overlap-words`,
-`--no-resume`, `--dump-errors`, `--oracle`, `--model`, `--model-name`.
+`--align-mode {first-per-chunk,all-per-chunk,first-note}`, `--no-resume`,
+`--dump-errors`, `--oracle`, `--model`, `--model-name`.
 
 Colab: [`colab_runner_mimic.ipynb`](colab_runner_mimic.ipynb) — T4, deps, HF login
 via `getpass`, **manual upload** of the sample file (no Drive mount, no data
@@ -323,6 +343,7 @@ colab_runner_mimic.ipynb  T4 runner (manual sample upload, 5 → 50 → 100)
 results/
   mimic_ner_{50,100}.csv        aggregate metrics — safe to commit
   mimic_ner_{50,100}_report.md  human-readable report — safe to commit
+  mimic_ner_align_mode_comparison.md  why first-per-chunk is the default
 data/samples/          GITIGNORED — extracted note text
 outputs/mimic/         GITIGNORED — per-note run state; error dumps quote notes
 ```

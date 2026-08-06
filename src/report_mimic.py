@@ -59,6 +59,38 @@ def _metrics_table(report):
     return "\n".join(lines)
 
 
+_ALIGN_NOTES = {
+    "first-per-chunk": (
+        "Only the **first** occurrence of each distinct predicted string is tagged "
+        "within each chunk. A drug named once by the model yields one span per "
+        "chunk rather than one per mention, which is what keeps the predicted-span "
+        "count close to the gold count. The 80-token chunk overlap still lets a "
+        "genuinely repeated entity be caught in more than one window, so recall "
+        "survives. Residual expansion above 1.00x below is that overlap effect "
+        "plus multi-chunk notes."
+    ),
+    "all-per-chunk": (
+        "**Every** non-overlapping occurrence of a predicted string is tagged "
+        "within the chunk that produced it, so one prediction of a common drug "
+        "name becomes several predicted spans. This inflates the predicted-span "
+        "count and depresses precision by an amount that is not the model's fault "
+        "— measured at 1.72x expansion, costing ~16 points of micro F1 against "
+        "`first-per-chunk`. Not the default; kept for comparison."
+    ),
+    "first-note": (
+        "Predictions from every chunk are pooled and only the **first** occurrence "
+        "in the whole note is tagged — one span per distinct string per note. Gold "
+        "legitimately annotates the same string many times in one note (five `IV` "
+        "events are five gold spans), so recall is capped near 0.70 by "
+        "construction. Not the default; kept for comparison."
+    ),
+}
+
+
+def _align_mode_note(mode):
+    return _ALIGN_NOTES.get(mode, f"Alignment mode `{mode}`.")
+
+
 def _mapping_table():
     lines = [
         "| gold annotation | our label | tie-break priority |",
@@ -150,6 +182,7 @@ discharge summaries have no annotations and were never considered.
 | `max_new_tokens` | {"n/a" if oracle else gen.get('max_new_tokens')} |
 | chunk size | {meta.get('chunk_words')} whitespace tokens |
 | chunk overlap | {meta.get('overlap_words')} whitespace tokens |
+| alignment mode | `{meta.get('align_mode')}` |
 | chunks run | {chunks:,} (avg {0.0 if not n else chunks / n:.1f} per note) |
 | scoring | `seqeval` entity-level `classification_report`, exact span match |
 
@@ -192,11 +225,13 @@ recall for the affected chunks is understated.
 
 ## Prediction alignment and dedupe
 
-Predictions arrive as entity *strings*, which are matched back onto tokens.
-`align_entities_to_bio` tags every non-overlapping occurrence of a string, so one
-prediction of a common drug name can become several predicted spans. Alignment is
-run **per chunk**, confining that expansion to the window the model actually
-read, but it does not eliminate it — hence these counts:
+Predictions arrive as entity *strings*, not character offsets, so each must be
+located in the text again. How that is done — `--align-mode`, here
+**`{meta.get('align_mode')}`** — is the single biggest lever on achievable
+precision, and it was chosen by measurement (see
+`mimic_ner_align_mode_comparison.md`).
+
+{_align_mode_note(meta.get('align_mode'))}
 
 | | |
 |---|---|
@@ -210,11 +245,13 @@ read, but it does not eliminate it — hence these counts:
 | spans dropped as partially overlapping another | {pred_dropped:,} |
 | **final predicted spans scored** | **{pred_spans:,}** |
 
-Expansion above 1.00x inflates the predicted-span count and therefore depresses
-precision by an amount that is not the model's fault. Overlapping windows re-read
-the same tokens, so entities in an overlap region get predicted twice;
-predictions are deduped on `(start, end, type)` after stitching, and the count
-removed is reported above.
+Compare **final predicted spans scored** against the gold support in the Results
+table: the closer those two numbers, the better calibrated the alignment. Any gap
+is systematic over- or under-prediction that no prompt change will fix.
+
+Overlapping windows re-read the same tokens, so an entity in an overlap region
+gets predicted twice; predictions are deduped on `(start, end, type)` after
+stitching, and the count removed is reported above.
 
 ## Gold label processing
 
@@ -262,6 +299,11 @@ python -m src.evaluate_mimic --oracle --n {n}
 Reading MedGemma's scores against that ceiling separates model error from harness
 error. Oracle precision in particular lands well below 1.0 — that gap *is* the
 multi-occurrence expansion above, and no model can avoid it.
+
+The `first-per-chunk` default was chosen by running that comparison across all
+three alignment modes; it beat the alternatives by +6.5 micro F1 and won on all
+six entity types. See `mimic_ner_align_mode_comparison.md`. Results computed
+under a different `--align-mode` are **not** comparable with these.
 
 ### Notes excluded from the sampling pool
 
