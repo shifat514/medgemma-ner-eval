@@ -344,6 +344,7 @@ results/
   mimic_ner_{50,100}.csv        aggregate metrics — safe to commit
   mimic_ner_{50,100}_report.md  human-readable report — safe to commit
   mimic_ner_align_mode_comparison.md  why first-per-chunk is the default
+  mimic_ner_smoke_history.md          n=5 runs, what each fix bought
 data/samples/          GITIGNORED — extracted note text
 outputs/mimic/         GITIGNORED — per-note run state; error dumps quote notes
 ```

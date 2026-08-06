@@ -160,9 +160,22 @@ def build_report(report, per_note, meta):
         if oracle else ""
     )
 
+    cap_pct = 0.0 if not chunks else 100.0 * cap_hits / chunks
+    truncation_banner = ""
+    if cap_hits:
+        truncation_banner = (
+            f"> ⚠️ **Generation hit `max_new_tokens` on {cap_hits:,} of "
+            f"{chunks:,} chunks ({cap_pct:.1f}%).** Those chunks were cut off "
+            f"mid-list, so entities after the cut were never emitted and recall "
+            f"is understated for a *configuration* reason, not a model one. "
+            f"Raise `MIMIC_MAX_NEW_TOKENS` (currently "
+            f"{gen.get('max_new_tokens')}) and re-run before reading these "
+            f"numbers as the model's ability.\n\n"
+        )
+
     md = f"""# {title}
 
-{banner}
+{banner}{truncation_banner}
 Aggregate metrics only. No note text, patient data, or example snippets appear in
 this file.
 
@@ -250,6 +263,36 @@ the six exact labels, which put `Duration` and `Reason` at exactly 0.0000.
 | items rescued by type normalization | {aliased:,} |
 | **entities extracted** | **{items_kept:,}** |
 | entities extracted per chunk | {0.0 if not chunks else items_kept / chunks:.1f} |
+| **generation hit `max_new_tokens`** | **{cap_hits:,} / {chunks:,} ({cap_pct:.1f}%)** |
+
+### Is the model extracting too much, or too little?
+
+The naive comparison — entities per chunk against gold spans per chunk — is
+wrong, because chunks overlap by {meta.get('overlap_words')} tokens and a gold
+span sitting in an overlap is legitimately offered to two chunks. The correct
+baseline is what a **perfect** extractor emits through this same chunking, which
+`--oracle` measures directly: on this corpus at
+{meta.get('chunk_words')}/{meta.get('overlap_words')} chunking the oracle emits
+**1.23 items per gold span**, so an ideal model over-emits by that much before
+any error.
+
+| | |
+|---|---|
+| gold spans scored | {gold_scored:,} |
+| gold spans per chunk | {0.0 if not chunks else gold_scored / chunks:.1f} |
+| entities extracted per chunk | {0.0 if not chunks else items_kept / chunks:.1f} |
+| items emitted per gold span | {0.0 if not gold_scored else items_kept / gold_scored:.2f}x |
+| ...of which is chunk overlap, not error | 1.23x |
+| **over-extraction vs a perfect extractor** | **{0.0 if not gold_scored else (items_kept / gold_scored) / 1.23:.2f}x** |
+| final predicted **spans** after alignment + dedupe | {pred_spans:,} |
+| predicted spans per gold span | {0.0 if not gold_scored else pred_spans / gold_scored:.2f}x |
+
+Read the last two rows against the ones above them. Items emitted and spans
+scored are different quantities: an emitted item that does not match the text
+verbatim, or that duplicates another, never becomes a scored span. **A model can
+over-emit items while under-predicting spans**, and the two have opposite
+implications — the first is verbosity, the second is missed recall. Precision is
+determined by the span row, not the item row.
 
 A non-zero "dropped — unrecognized type" count means entities the model found
 were thrown away; the offending type strings are listed in the run's

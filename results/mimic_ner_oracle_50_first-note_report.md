@@ -111,6 +111,36 @@ the six exact labels, which put `Duration` and `Reason` at exactly 0.0000.
 | items rescued by type normalization | 0 |
 | **entities extracted** | **6,380** |
 | entities extracted per chunk | 24.4 |
+| **generation hit `max_new_tokens`** | **0 / 262 (0.0%)** |
+
+### Is the model extracting too much, or too little?
+
+The naive comparison — entities per chunk against gold spans per chunk — is
+wrong, because chunks overlap by 80 tokens and a gold
+span sitting in an overlap is legitimately offered to two chunks. The correct
+baseline is what a **perfect** extractor emits through this same chunking, which
+`--oracle` measures directly: on this corpus at
+400/80 chunking the oracle emits
+**1.23 items per gold span**, so an ideal model over-emits by that much before
+any error.
+
+| | |
+|---|---|
+| gold spans scored | 5,211 |
+| gold spans per chunk | 19.9 |
+| entities extracted per chunk | 24.4 |
+| items emitted per gold span | 1.22x |
+| ...of which is chunk overlap, not error | 1.23x |
+| **over-extraction vs a perfect extractor** | **1.00x** |
+| final predicted **spans** after alignment + dedupe | 3,741 |
+| predicted spans per gold span | 0.72x |
+
+Read the last two rows against the ones above them. Items emitted and spans
+scored are different quantities: an emitted item that does not match the text
+verbatim, or that duplicates another, never becomes a scored span. **A model can
+over-emit items while under-predicting spans**, and the two have opposite
+implications — the first is verbosity, the second is missed recall. Precision is
+determined by the span row, not the item row.
 
 A non-zero "dropped — unrecognized type" count means entities the model found
 were thrown away; the offending type strings are listed in the run's

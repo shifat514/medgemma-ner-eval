@@ -142,8 +142,13 @@ LOAD_IN_4BIT = True
 # Greedy decoding for reproducibility. max_new_tokens is well above the 512 used
 # for single sentences: a 400-word chunk of a discharge summary can legitimately
 # contain 30+ medication entities.
+#
+# Raised 1024 -> 1536 after a smoke run hit the cap on 5 of 21 chunks (24%).
+# A capped generation truncates the entity list mid-JSON, so recall drops for a
+# configuration reason rather than a model reason. The report prints the cap-hit
+# count prominently; if it is still non-zero, raise this again.
 GEN_CONFIG = {
-    "max_new_tokens": int(os.environ.get("MIMIC_MAX_NEW_TOKENS", "1024")),
+    "max_new_tokens": int(os.environ.get("MIMIC_MAX_NEW_TOKENS", "1536")),
     "do_sample": False,
 }
 
