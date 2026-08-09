@@ -1,5 +1,6 @@
 .PHONY: setup test smoke eval lint clean \
-        mimic-sample mimic-smoke mimic-50 mimic-100 mimic-oracle mimic-check
+        mimic-sample mimic-smoke mimic-50 mimic-100 mimic-oracle mimic-check \
+        mdace-sample mdace-oracle mdace-smoke mdace-50 mdace-run
 
 # Install dependencies via uv
 setup:
@@ -63,3 +64,30 @@ clean:
 # Wipes cached per-note run state. The next run starts from scratch.
 clean-mimic-runs:
 	rm -rf outputs/mimic
+
+# --- MDACE term-level billing NER (MIMIC-III) ---------------------------------
+# REAL PATIENT DATA. mdace-sample reads the credentialed source files from
+# outside the repo and writes a small gitignored file; run it on the machine
+# that holds the data. Everything else reads only that sample file.
+
+# Extract the 73-note union sample -> data/samples/ (gitignored). LOCAL ONLY.
+mdace-sample:
+	uv run python -m src.build_mdace_sample
+
+# Harness ceiling — no model, no GPU, ~10s. B1/B2 must score 1.0000.
+mdace-oracle:
+	uv run python -m src.evaluate_mdace --oracle
+
+# Smoke test: 5 notes spanning short/long and both chart types, keeping the raw
+# replies. 15 chunks, ~12 min (needs a GPU + HF login).
+mdace-smoke:
+	uv run python -m src.evaluate_mdace --smoke 5 --dump-replies
+
+# Phase 1: the stratified 50 notes / 122 chunks, ~1.6h. The headline result.
+mdace-50:
+	uv run python -m src.evaluate_mdace --limit 50
+
+# Phase 2: the remaining 23 notes / 80 chunks, ~1.1h. Reuses phase 1's cache and
+# adds views A1 and B1. Resumable.
+mdace-run:
+	uv run python -m src.evaluate_mdace

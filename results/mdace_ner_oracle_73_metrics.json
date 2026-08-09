@@ -1,0 +1,210 @@
+{
+  "run": {
+    "chunk_words": 400,
+    "label": "oracle_73",
+    "load_in_4bit": true,
+    "max_new_tokens": 512,
+    "model_id": "google/medgemma-4b-it",
+    "model_name": "medgemma-4b-it-ORACLE",
+    "n_cap_hits": 0,
+    "n_mixed_chart_type": 13,
+    "n_notes_scored": 73,
+    "notes_missing": [],
+    "oracle": true,
+    "overlap_words": 80,
+    "run_dir": "outputs/mdace/medgemma-4b-it-ORACLE_seed13_cw400_ov80_mnt512",
+    "sample_file": "data/samples/mdace_sample.jsonl",
+    "seed": 13
+  },
+  "views": {
+    "A1": {
+      "detail": "answer key = gold_code_description from that file",
+      "metrics": {
+        "code_recall": 1.0,
+        "code_recall_ci": [
+          0.9795487261607652,
+          1.0
+        ],
+        "codes_covered": 184,
+        "codes_total": 184,
+        "extraction_ratio": 2.142857142857143,
+        "f1": 0.0,
+        "fn": 91,
+        "fp": 195,
+        "fp_buckets": {
+          "billed_elsewhere": 195,
+          "in_note_unbilled": 0,
+          "not_in_note": 0
+        },
+        "gold_per_note": 3.7916666666666665,
+        "n_gold": 91,
+        "n_notes": 24,
+        "n_pred": 195,
+        "precision": 0.0,
+        "precision_ceiling": 0.4666666666666667,
+        "precision_ci": [
+          0.0,
+          0.019319900865814796
+        ],
+        "pred_per_note": 8.125,
+        "recall": 0.0,
+        "recall_ci": [
+          0.0,
+          0.04050543221539915
+        ],
+        "tp": 0
+      },
+      "title": "The 100-row sample cut (24 notes), scored as originally asked"
+    },
+    "B1": {
+      "detail": "answer key = every evidence phrase those notes carry",
+      "metrics": {
+        "code_recall": 1.0,
+        "code_recall_ci": [
+          0.9795487261607652,
+          1.0
+        ],
+        "codes_covered": 184,
+        "codes_total": 184,
+        "extraction_ratio": 1.0,
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "fp_buckets": {
+          "billed_elsewhere": 0,
+          "in_note_unbilled": 0,
+          "not_in_note": 0
+        },
+        "gold_per_note": 8.125,
+        "n_gold": 195,
+        "n_notes": 24,
+        "n_pred": 195,
+        "precision": 1.0,
+        "precision_ceiling": 1.0,
+        "precision_ci": [
+          0.9806800991341854,
+          1.0
+        ],
+        "pred_per_note": 8.125,
+        "recall": 1.0,
+        "recall_ci": [
+          0.9806800991341854,
+          1.0
+        ],
+        "tp": 195
+      },
+      "title": "The same 24 notes, corrected method"
+    },
+    "B2": {
+      "by_chart_type": {
+        "Inpatient": {
+          "code_recall": 1.0,
+          "code_recall_ci": [
+            0.9805824457545836,
+            1.0
+          ],
+          "codes_covered": 194,
+          "codes_total": 194,
+          "extraction_ratio": 1.0,
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "fp_buckets": {
+            "billed_elsewhere": 0,
+            "in_note_unbilled": 0,
+            "not_in_note": 0
+          },
+          "gold_per_note": 8.56,
+          "n_gold": 214,
+          "n_notes": 25,
+          "n_pred": 214,
+          "precision": 1.0,
+          "precision_ceiling": 1.0,
+          "precision_ci": [
+            0.9823651680854346,
+            1.0
+          ],
+          "pred_per_note": 8.56,
+          "recall": 1.0,
+          "recall_ci": [
+            0.9823651680854346,
+            1.0
+          ],
+          "tp": 214
+        },
+        "Profee": {
+          "code_recall": 1.0,
+          "code_recall_ci": [
+            0.9656514212958325,
+            0.9999999999999998
+          ],
+          "codes_covered": 108,
+          "codes_total": 108,
+          "extraction_ratio": 1.0,
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "fp_buckets": {
+            "billed_elsewhere": 0,
+            "in_note_unbilled": 0,
+            "not_in_note": 0
+          },
+          "gold_per_note": 4.4,
+          "n_gold": 110,
+          "n_notes": 25,
+          "n_pred": 110,
+          "precision": 1.0,
+          "precision_ceiling": 1.0,
+          "precision_ci": [
+            0.9662548664108728,
+            1.0
+          ],
+          "pred_per_note": 4.4,
+          "recall": 1.0,
+          "recall_ci": [
+            0.9662548664108728,
+            1.0
+          ],
+          "tp": 110
+        }
+      },
+      "detail": "25 Profee + 25 Inpatient, seed 13, full gold",
+      "metrics": {
+        "code_recall": 1.0,
+        "code_recall_ci": [
+          0.987439249598485,
+          1.0
+        ],
+        "codes_covered": 302,
+        "codes_total": 302,
+        "extraction_ratio": 1.0,
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "fp_buckets": {
+          "billed_elsewhere": 0,
+          "in_note_unbilled": 0,
+          "not_in_note": 0
+        },
+        "gold_per_note": 6.48,
+        "n_gold": 324,
+        "n_notes": 50,
+        "n_pred": 324,
+        "precision": 1.0,
+        "precision_ceiling": 1.0,
+        "precision_ci": [
+          0.9882821460119766,
+          1.0
+        ],
+        "pred_per_note": 6.48,
+        "recall": 1.0,
+        "recall_ci": [
+          0.9882821460119766,
+          1.0
+        ],
+        "tp": 324
+      },
+      "title": "Stratified 50 notes \u2014 THE HEADLINE"
+    }
+  }
+}

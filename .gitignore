@@ -42,6 +42,12 @@ results/*.json
 !results/mimic_ner_*.md
 !results/mimic_ner_*.json
 
+# ...and the MDACE aggregate metrics + report. Same rule: counts and rates only,
+# no note text and no extracted term strings. The per-note term lists live in
+# outputs/ (below) and are never committed.
+!results/mdace_ner_*.md
+!results/mdace_ner_*.json
+
 # Model weights (downloaded at runtime)
 *.bin
 *.safetensors
