@@ -135,6 +135,51 @@ def _item_lists(value):
         yield [value]
 
 
+# Keys and boilerplate a salvaged string might be, rather than a finding.
+_SALVAGE_STOPWORDS = frozenset(
+    {"terms", "text", "type", "entities", "label", "category", "span",
+     "entity", "value", "name", "findings", "conditions", "diagnoses",
+     "condition", "procedure", "injury", "items", "results", "data"}
+)
+_QUOTED_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def _salvage_truncated_strings(reply):
+    """Complete quoted strings from a JSON array that was cut off mid-write.
+
+    Truncation is all-or-nothing for a flat string list. A reply cut at the
+    token cap looks like::
+
+        {"terms": ["sepsis", "HTN", "acute kidney inj
+
+    Nothing here is balanced, so the ordinary scanner — which recovers complete
+    ``{...}`` objects — finds none and the entire chunk contributes zero. The
+    typed format degraded far more gracefully, because each finding was its own
+    balanced object; that is the one thing it was better at.
+
+    So: take everything after the last ``[``, keep the fully-closed quoted
+    strings, and drop the trailing partial one. Called ONLY when normal parsing
+    yielded nothing, so a well-formed reply can never reach it. JSON key names
+    are filtered out, since a truncated *typed* reply would otherwise donate
+    "text" and "type" as findings.
+    """
+    if not isinstance(reply, str):
+        return []
+    start = reply.rfind("[")
+    if start == -1:
+        return []
+
+    out, seen = [], set()
+    for match in _QUOTED_RE.finditer(reply, start + 1):
+        value = match.group(1).strip()
+        key = value.lower()
+        if not value or key in _SALVAGE_STOPWORDS or key in seen:
+            continue
+        seen.add(key)
+        out.append(value)
+    return out
+
+
 def _first_str(item, keys):
     wanted = [_norm_key(k) for k in keys]
     for want in wanted:
@@ -159,7 +204,7 @@ def parse_terms_diag(reply):
       types       {type string: count}, diagnostics only
     """
     diag = {"shape": "no-json", "n_items": 0, "n_kept": 0, "n_no_text": 0,
-            "empty_list": False, "types": {}}
+            "empty_list": False, "types": {}, "n_salvaged": 0}
 
     if not isinstance(reply, str) or not reply.strip():
         diag["shape"] = "empty-reply"
@@ -218,6 +263,18 @@ def parse_terms_diag(reply):
 
     if diag["shape"] == "json" and not saw_list:
         diag["shape"] = "no-item-list"
+
+    # Last resort, and only when nothing at all was recovered: a reply cut off
+    # mid-array still contains complete findings before the cut.
+    if not out:
+        salvaged = _salvage_truncated_strings(reply)
+        if salvaged:
+            out = [(text, None) for text in salvaged]
+            diag["shape"] = "salvaged-truncated"
+            diag["n_items"] += len(salvaged)
+            diag["n_kept"] += len(salvaged)
+            diag["n_salvaged"] = len(salvaged)
+
     return out, diag
 
 

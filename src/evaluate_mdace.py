@@ -133,6 +133,7 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
         "n_items_seen": 0, "n_items_kept": 0, "n_items_no_text": 0,
         "n_chunks_no_json": 0, "n_chunks_empty_list": 0,
         "n_chunks_zero_terms": 0, "n_mentions": 0, "n_empty_after_norm": 0,
+        "n_chunks_salvaged": 0, "n_items_salvaged": 0,
     }
 
     terms, raw = set(), {}
@@ -157,6 +158,11 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
         st["n_items_no_text"] += pdiag["n_no_text"]
         if pdiag["shape"] in ("no-json", "empty-reply", "no-item-list"):
             st["n_chunks_no_json"] += 1
+        if pdiag.get("n_salvaged"):
+            # Recovered from a reply cut off at the token cap. Counted apart
+            # from clean parses so the report never implies the chunk was fine.
+            st["n_chunks_salvaged"] += 1
+            st["n_items_salvaged"] += pdiag["n_salvaged"]
         if pdiag["empty_list"]:
             st["n_chunks_empty_list"] += 1
         if not parsed:
@@ -282,6 +288,8 @@ def _print_diagnostics(per_note, diag_sink):
     print(f"    generation hit max_new_tokens     {tot('n_cap_hits'):,}"
           "   <- must be 0; if not, raise MDACE_MAX_NEW_TOKENS back to 1024")
     print(f"    inference/parse exception         {tot('n_chunk_failures'):,}")
+    print(f"    truncated, prefix salvaged        {tot('n_chunks_salvaged'):,}"
+          f"  ({tot('n_items_salvaged'):,} terms recovered)")
     print(f"  JSON items emitted                  {tot('n_items_seen'):,}")
     print(f"    dropped: no usable text           {tot('n_items_no_text'):,}")
     print(f"    dropped: empty after normalizing  {tot('n_empty_after_norm'):,}")

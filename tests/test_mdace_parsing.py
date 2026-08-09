@@ -275,3 +275,57 @@ def test_run_tag_changes_when_the_prompt_changes():
     assert run_tag(*args, prompt_id="aaaaaaaa").endswith("_paaaaaaaa")
     # Omitting it keeps the old name, so existing run dirs stay readable.
     assert run_tag(*args) == "medgemma-4b-it_seed13_cw400_ov80_mnt1024"
+
+
+# --------------------------------------------------------------------------
+# Salvaging a reply cut off at the token cap
+# --------------------------------------------------------------------------
+
+def test_truncated_string_array_is_salvaged():
+    """Truncation is all-or-nothing for a flat string list: nothing in a cut
+    reply is balanced, so the ordinary scanner recovers zero. On a smoke run
+    this cost 3 of 15 chunks their entire output."""
+    reply = '{"terms": ["sepsis", "HTN", "acute kidney inj'
+    terms, diag = parse_terms_diag(reply)
+    assert [t for t, _ in terms] == ["sepsis", "HTN"]
+    assert diag["shape"] == "salvaged-truncated"
+    assert diag["n_salvaged"] == 2
+
+
+def test_salvage_drops_the_partial_trailing_string():
+    reply = '{"terms": ["atrial fibrillation", "acute renal fail'
+    assert [t for t, _ in parse_terms(reply)] == ["atrial fibrillation"]
+
+
+def test_salvage_does_not_run_on_well_formed_replies():
+    """It must be a last resort — otherwise it could double-count or pick up
+    strings out of prose."""
+    reply = json.dumps({"terms": ["sepsis", "HTN"]})
+    _terms, diag = parse_terms_diag(reply)
+    assert diag["shape"] == "json"
+    assert diag["n_salvaged"] == 0
+
+
+def test_salvage_does_not_resurrect_an_explicit_empty_list():
+    reply = json.dumps({"terms": []})
+    terms, diag = parse_terms_diag(reply)
+    assert terms == []
+    assert diag["empty_list"] is True
+    assert diag["n_salvaged"] == 0
+
+
+def test_salvage_filters_out_json_key_names():
+    """A truncated TYPED reply would otherwise donate "text" and "type" as
+    findings."""
+    reply = '{"terms": [{"text": "sepsis", "type": "Condition"}, {"text": "HT'
+    terms, _diag = parse_terms_diag(reply)
+    got = [t for t, _ in terms]
+    assert "text" not in got and "type" not in got and "terms" not in got
+    assert "sepsis" in got
+
+
+def test_salvage_returns_nothing_when_there_is_no_array():
+    reply = "I was unable to find any codable findings in this text."
+    terms, diag = parse_terms_diag(reply)
+    assert terms == []
+    assert diag["shape"] in ("no-json", "no-item-list")
