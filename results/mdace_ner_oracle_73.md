@@ -1,6 +1,6 @@
 # MedGemma zero-shot term-level NER — MDACE billing evidence
 
-Model **medgemma-4b-it-ORACLE** (`google/medgemma-4b-it`), 4-bit, greedy decoding, `max_new_tokens=512`.
+Model **medgemma-4b-it-ORACLE** (`google/medgemma-4b-it`), 4-bit, greedy decoding, `max_new_tokens=1024`.
 Chunking 400 words / 80 overlap. Seed 13. 73 notes scored.
 
 **ORACLE RUN — no model involved.** Gold terms were fed back through the pipeline to check the harness. Recall below must read 1.0000; anything less is a bug in chunking, normalization or parsing, not a model result.
@@ -80,4 +80,5 @@ Generation hit the token cap on **0** chunks. This must be 0; if it is not, repl
 
 - **Strict matching only.** No fuzzy or embedding matching. 88% of gold terms are 1–3 words and behave well; the remaining 12% are clause-length snippets a model will not reproduce word-perfectly, and those score as misses even when the model was substantially right. The gitignored `errors.jsonl` holds the actual missed phrases so that decision can be made on evidence rather than guesswork.
 - **MIMIC-III only.** MDACE is built on MIMIC-III notes (integer note IDs, 6-digit admission IDs, `[**...**]` redaction). It shares no notes with the MIMIC-IV medication evaluation in this repo, so the two sets of numbers must not be pooled or compared directly.
-- **Type labels are not scored.** The prompt asks the model to classify each term as Condition / Procedure / Injury / Status, but scoring compares strings only. A term labelled wrongly still counts as a hit.
+- **Recall is capped at 0.945, by choice.** The prompt asks for diagnoses, procedures and injuries, and explicitly excludes medications. That puts the 5.5% of gold carried by ICD-10-CM Z-codes (status and history — smoking history, long-term drug therapy) out of reach. The alternative was measured and was worse: asking for that category too made the model return 33% medication items, which truncated 12 of 15 replies and pushed extraction to 68.6 terms per note against ~10 gold. A 5.5% ceiling costs less than the damage that volume did to the other 94.5%.
+- **Type labels are not scored.** The prompt asks the model to classify each term as Condition / Procedure / Injury, but scoring compares strings only. A term labelled wrongly still counts as a hit.

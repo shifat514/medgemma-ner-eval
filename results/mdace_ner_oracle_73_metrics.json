@@ -3,7 +3,7 @@
     "chunk_words": 400,
     "label": "oracle_73",
     "load_in_4bit": true,
-    "max_new_tokens": 512,
+    "max_new_tokens": 1024,
     "model_id": "google/medgemma-4b-it",
     "model_name": "medgemma-4b-it-ORACLE",
     "n_cap_hits": 0,
@@ -12,7 +12,7 @@
     "notes_missing": [],
     "oracle": true,
     "overlap_words": 80,
-    "run_dir": "outputs/mdace/medgemma-4b-it-ORACLE_seed13_cw400_ov80_mnt512",
+    "run_dir": "outputs/mdace/medgemma-4b-it-ORACLE_seed13_cw400_ov80_mnt1024",
     "sample_file": "data/samples/mdace_sample.jsonl",
     "seed": 13
   },

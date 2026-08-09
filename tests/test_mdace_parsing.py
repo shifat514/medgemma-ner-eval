@@ -161,12 +161,40 @@ def test_non_string_replies_do_not_raise(reply):
 # Prompt content
 # --------------------------------------------------------------------------
 
-def test_prompt_asks_for_all_four_categories():
-    """A conditions-only prompt caps recall at 0.84 — 16% of gold is not a
-    plain disease (procedures, injuries, status/history)."""
+def test_prompt_asks_for_conditions_procedures_and_injuries():
+    """A conditions-only prompt caps recall at 0.84; these three reach 94.5%."""
     prompt = build_prompt("some note text")
-    for category in ("Condition", "Procedure", "Injury", "Status"):
+    for category in ("Condition", "Procedure", "Injury"):
         assert category in prompt
+
+
+def test_prompt_excludes_medications():
+    """Asking for medication/status items returned 138 of 421 extractions on a
+    smoke run (33%) for a category worth 5.5% of gold, and the volume truncated
+    12 of 15 replies. The category is out, and saying so explicitly matters more
+    than omitting it."""
+    prompt = build_prompt("x")
+    assert "Do NOT extract medications" in prompt
+    assert '"Status"' not in prompt
+
+
+def test_prompt_example_output_omits_the_medication_in_its_input():
+    """The negative example is the load-bearing part: aspirin and the tobacco
+    line appear in the example INPUT and must not appear in the example OUTPUT.
+
+    Asserted against the example block itself rather than "anything after the
+    word Example output:", because the prompt goes on to point the omission out
+    in prose — and that prose naturally mentions aspirin.
+    """
+    from src.prompt_mdace import _EXAMPLE_INPUT, _EXAMPLE_OUTPUT
+
+    assert "aspirin 81mg daily" in _EXAMPLE_INPUT
+    assert "Tobacco history" in _EXAMPLE_INPUT
+    assert "aspirin" not in _EXAMPLE_OUTPUT.lower()
+    assert "tobacco" not in _EXAMPLE_OUTPUT.lower()
+    # ...and the prompt says so out loud, so the omission cannot read as an
+    # oversight to the model.
+    assert "neither appears in the example output" in build_prompt("x")
 
 
 def test_prompt_demands_verbatim_copying():

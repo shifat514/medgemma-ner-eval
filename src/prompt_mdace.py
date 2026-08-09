@@ -9,13 +9,26 @@ still-missed false negative. Here the only failure mode is losing usable text,
 so anything carrying a string is kept. Types are recorded for diagnostics and
 never consulted by the scorer.
 
-WHY THE PROMPT ASKS FOR MORE THAN DIAGNOSES. Only 84% of gold rows are plain
-conditions; the rest are procedures (CPT 3.6%, ICD-10-PCS 2.9%), injuries and
-poisonings (S/T codes, 4.0%), and status or history (Z codes, 5.5% — smoking
-history, long-term drug therapy). A prompt asking only for diagnoses would cap
-recall at 0.84 before the model did anything, and that cap would read as a model
-weakness in the report. The conditions-only number is recovered at scoring time
-by restricting gold to the 84% slice, not by narrowing the prompt.
+WHY THE PROMPT ASKS FOR MORE THAN DIAGNOSES — AND WHERE IT STOPS. Only 84% of
+gold rows are plain conditions; the rest are procedures (CPT 3.6%, ICD-10-PCS
+2.9%), injuries and poisonings (S/T codes, 4.0%), and status or history (Z
+codes, 5.5%). Asking only for diagnoses would cap recall at 0.84 before the
+model did anything, and that cap would read as a model weakness in the report.
+
+Status/history is deliberately NOT requested, and that is a measured decision
+rather than an oversight. An earlier version of this prompt asked for it, with
+"a medication the patient is maintained on" as an example, to reach the Z79.82
+long-term-drug-therapy codes. On a 15-chunk smoke run the model returned 138
+Status items — 33% of everything it extracted — for a category worth 5.5% of
+gold, because a discharge summary lists every drug the patient is on. The
+resulting flood truncated 12 of 15 replies against a 512-token cap and pushed
+extraction to 68.6 distinct terms per note against ~10 gold.
+
+So the prompt asks for Conditions, Procedures and Injuries, which reach 94.5% of
+gold, and explicitly tells the model NOT to extract medications. The example
+output demonstrates that by leaving the medication and tobacco lines in the
+example input unextracted — a negative example teaches this far better than an
+omitted category does. The 5.5% ceiling is documented in the report.
 """
 
 import json
@@ -219,6 +232,11 @@ _EXAMPLE_INPUT = (
     "ago. Continued on aspirin 81mg daily for secondary prevention."
 )
 
+# Note what is ABSENT: "aspirin 81mg daily" and the tobacco line appear in the
+# example input and are deliberately NOT in this output. A negative example is
+# the strongest signal available that medication lists are out of scope — an
+# earlier version that merely omitted the category still saw the model return
+# 33% medication items.
 _EXAMPLE_OUTPUT = json.dumps({"terms": [
     {"text": "HTN", "type": "Condition"},
     {"text": "type 2 diabetes", "type": "Condition"},
@@ -226,38 +244,39 @@ _EXAMPLE_OUTPUT = json.dumps({"terms": [
     {"text": "cardiac catheterization", "type": "Procedure"},
     {"text": "fall", "type": "Injury"},
     {"text": "fracture of the left wrist", "type": "Injury"},
-    {"text": "Tobacco history: quit smoking 20 years ago", "type": "Status"},
-    {"text": "aspirin 81mg daily", "type": "Status"},
 ]}, indent=None)
 
 _INSTRUCTION = (
-    "Extract EVERY medically codable finding from the clinical text below.\n"
+    "Extract every DIAGNOSIS, PROCEDURE and INJURY from the clinical text "
+    "below.\n"
     "\n"
-    "Extract all four of these categories:\n"
+    "Use exactly these three categories:\n"
     '  "Condition" - a disease, diagnosis, symptom, or clinical finding '
     "(e.g. sepsis, atrial fibrillation, chest pain, acute kidney injury)\n"
     '  "Procedure" - something that was performed on the patient '
     "(e.g. colonoscopy, intubation, CABG, cardiac catheterization)\n"
     '  "Injury"    - an injury, fracture, wound, burn, poisoning, or overdose '
     "(e.g. fall, hip fracture, laceration)\n"
-    '  "Status"    - health status or history that would be coded '
-    "(e.g. tobacco history, personal history of cancer, long-term "
-    "anticoagulation, a medication the patient is maintained on)\n"
     "\n"
     "Rules:\n"
-    "1. Copy each term VERBATIM from the text, character for character. Do not "
+    "1. Do NOT extract medications, drug names, doses, or IV fluids. A "
+    "medication list is not a finding. If the note says \"Continued on aspirin "
+    "81mg daily\", extract nothing from it.\n"
+    "2. Do NOT extract social history, family history, vital signs, lab values, "
+    "or allergies.\n"
+    "3. Copy each term VERBATIM from the text, character for character. Do not "
     "reword, do not expand abbreviations, do not correct spelling. If the text "
     "says \"HTN\", return \"HTN\", not \"hypertension\". If the text misspells "
     "a word, copy the misspelling.\n"
-    "2. Keep each term SHORT — the specific words naming the finding, not the "
+    "4. Keep each term SHORT — the specific words naming the finding, not the "
     "whole sentence around it. Most terms are one to three words.\n"
-    "3. Text in square brackets like [**Known lastname 1234**] or "
+    "5. Text in square brackets like [**Known lastname 1234**] or "
     "[**2145-6-7**] is removed patient information. Never extract it and never "
     "include it inside a term.\n"
-    "4. Extract from the WHOLE text, including narrative prose and past "
+    "6. Extract from the WHOLE text, including narrative prose and past "
     "medical history, not only from headed lists.\n"
-    "5. Return ONE FLAT list.\n"
-    "6. Return ONLY the JSON object — no prose, no markdown fences, no "
+    "7. Return ONE FLAT list, and do not repeat the same term twice.\n"
+    "8. Return ONLY the JSON object — no prose, no markdown fences, no "
     "explanation.\n"
     "\n"
     "Example input:\n"
@@ -266,7 +285,11 @@ _INSTRUCTION = (
     "Example output:\n"
     f"{_EXAMPLE_OUTPUT}\n"
     "\n"
-    'If there are genuinely no codable findings, return {"terms": []}.\n'
+    "Note that the example input mentions aspirin and a tobacco history, and "
+    "neither appears in the example output. That is correct — they are not "
+    "diagnoses, procedures or injuries.\n"
+    "\n"
+    'If there are genuinely no findings, return {"terms": []}.\n'
     "\n"
     "Now do the same for this text.\n"
     "Text:\n"

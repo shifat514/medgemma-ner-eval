@@ -107,20 +107,25 @@ MODEL_NAME = os.environ.get("MEDGEMMA_MODEL_NAME", "medgemma-4b-it")
 
 LOAD_IN_4BIT = True
 
-# 512, not the medication evaluation's 1024. Two reasons, both measured:
+# 1024, raised from 512 after measurement. The original reasoning for 512 was
+# that a note carries only 4-6 gold terms, so 512 looked like ~10x headroom.
+# That confused what the model is ASKED to find with what the coders happened to
+# BILL: the model extracts every finding it sees, and a 400-word window of a
+# discharge summary genuinely contains far more than six.
 #
-# 1. Expected output is far smaller. That task wanted six kinds of medication
-#    detail (~30 entities/chunk); this one wants billing evidence terms, and a
-#    note carries a median of 4-6 gold terms in total. 512 is ~10x headroom.
-# 2. The medication run hit its cap on the SAME 5 of 21 chunks at both 1024 and
-#    1536. A cap that binds identically at two very different limits is a
-#    repetition loop, not a length shortfall; a lower cap ends the loop sooner
-#    and costs less GPU time.
+# A 15-chunk smoke run at 512 truncated 12 of 15 replies, emitting ~28 items per
+# chunk before running into the wall. Truncation is silent damage — the parser
+# still salvages the JSON objects it received, so the run reports plausible
+# numbers while everything past the cut is simply missing from recall.
 #
-# The runner counts cap hits (n_cap_hits). If the smoke run shows any, raise
-# this back to 1024 rather than assuming truncation is harmless.
+# The prompt was narrowed at the same time (medications are now explicitly out
+# of scope; see prompt_mdace), which removed the largest source of volume. 1024
+# is insurance on top of that fix, not a substitute for it.
+#
+# The runner counts cap hits (n_cap_hits) and the report prints them. Treat any
+# non-zero value as "recall is understated", never as "close enough".
 GEN_CONFIG = {
-    "max_new_tokens": int(os.environ.get("MDACE_MAX_NEW_TOKENS", "512")),
+    "max_new_tokens": int(os.environ.get("MDACE_MAX_NEW_TOKENS", "1024")),
     "do_sample": False,
 }
 
