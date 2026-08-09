@@ -286,7 +286,7 @@ def _print_diagnostics(per_note, diag_sink):
     print(f"    yielded zero terms                {tot('n_chunks_zero_terms'):,}"
           f"  ({100.0 * tot('n_chunks_zero_terms') / chunks:.1f}%)")
     print(f"    generation hit max_new_tokens     {tot('n_cap_hits'):,}"
-          "   <- must be 0; if not, raise MDACE_MAX_NEW_TOKENS back to 1024")
+          "   <- non-zero means recall is understated")
     print(f"    inference/parse exception         {tot('n_chunk_failures'):,}")
     print(f"    truncated, prefix salvaged        {tot('n_chunks_salvaged'):,}"
           f"  ({tot('n_items_salvaged'):,} terms recovered)")
@@ -323,7 +323,8 @@ def build_views(records, preds):
     prevent. Phase 2 fills the rest in and all three appear.
 
     Each step changes one thing from the step above it:
-        A1 -> B1  what the answer-key column is worth
+        A1 -> A2  what the answer-key COLUMN is worth (catalogue vs note wording)
+        A2 -> B1  what the answer-key COMPLETENESS is worth (99 of 195 shipped)
         B1 -> B2  what balanced sampling changes
     """
     def split(predicate):
@@ -341,6 +342,11 @@ def build_views(records, preds):
             "title": f"The 100-row sample cut ({n} notes), scored as originally asked",
             "detail": "answer key = gold_code_description from that file",
             "metrics": score_view(shipped, gold_key="descr"),
+        }
+        views["A2"] = {
+            "title": f"The same {n} notes, scored on the phrases that file ships",
+            "detail": "answer key = the note wording carried by the 100-row cut",
+            "metrics": score_view(shipped, gold_key="shipped"),
         }
         views["B1"] = {
             "title": f"The same {n} notes, corrected method",
@@ -509,6 +515,7 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
         "notes_missing": missing,
         "run_dir": run_dir,
         "sample_file": sample_file or SAMPLE_FILE,
+        "n_chunks": sum(r.get("n_chunks", 0) or 0 for r in per_note_stats),
         "n_cap_hits": sum(r.get("n_cap_hits", 0) or 0 for r in per_note_stats),
         "n_mixed_chart_type": sum(1 for r in scored if r.get("mixed_chart_type")),
     }
@@ -554,7 +561,7 @@ def _dump_errors(path, records, preds):
 
 
 def _print_summary(views):
-    for key in ("A1", "B1", "B2"):
+    for key in ("A1", "A2", "B1", "B2"):
         view = views.get(key)
         if not view:
             continue

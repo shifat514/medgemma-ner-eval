@@ -37,10 +37,47 @@ def _ladder_table(views):
         "| view | what it is | notes | gold terms | terms predicted | precision | recall | F1 |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    for key in ("A1", "B1", "B2"):
+    for key in ("A1", "A2", "B1", "B2"):
         if key in views:
             lines.append(_view_row(key, views[key]))
     return "\n".join(lines)
+
+
+def _ladder_notes(views):
+    """Only explain steps whose BOTH rows are present.
+
+    A phase-1 report holds B2 alone. Emitting the A1->A2 prose there sends the
+    reader hunting for rows that are not in the table yet.
+    """
+    steps = [
+        ("A1", "A2",
+         "- **A1 → A2** is what the answer-key *column* is worth. A1 scores "
+         "against `gold_code_description`, the ICD catalogue wording, exactly "
+         "as the original request described. A2 scores the same notes against "
+         "the note wording that same file carries. The two columns agree in "
+         "only 4.5% of rows corpus-wide — the note says `depression`, the "
+         "catalogue says `Major depressive disorder, single episode, "
+         "unspecified` — so A1 is near-zero by construction. That is a property "
+         "of the two columns, not a fault in the model or in the data as built."),
+        ("A2", "B1",
+         "- **A2 → B1** is what the answer-key *completeness* is worth. Both "
+         "rows use note wording on the same notes; only the key changes. The "
+         "100-row cut carries 99 evidence phrases where those notes actually "
+         "hold 195, because the file was cut to 100 annotation rows rather than "
+         "to whole notes. Everything A2 counts as a false positive and B1 counts "
+         "as a hit is a phrase that really was billed. A2 is the number "
+         "comparable with any figure computed from that file directly."),
+        ("B1", "B2",
+         "- **B1 → B2** is what balanced sampling changes. B1 runs on the 24 "
+         "notes reachable from the 100-row sample cut, which are 17 Inpatient "
+         "and 7 Profee. B2 runs on 25 of each, drawn with seed 13."),
+    ]
+    out = [text for lo, hi, text in steps if lo in views and hi in views]
+    if not out:
+        return ("Only one row is available so far, so there is no jump to read "
+                "yet. The remaining rows arrive when the rest of the sample has "
+                "been run.")
+    return "\n".join(out)
 
 
 def _stratum_table(by_type):
@@ -137,24 +174,14 @@ def build_report(views, run_meta):
     )
 
     parts.append(
-        "## The three views\n\n"
-        "Read this table top to bottom as an argument, not as three separate "
+        "## The ladder\n\n"
+        "Read this table top to bottom as an argument, not as separate "
         "results. Every row uses **the same model output** — one inference "
         "pass — and changes exactly one thing from the row above it. Higher is "
         "better throughout, but the interesting quantity is the *jump between "
         "rows*, because each jump isolates the cost of one decision.\n\n"
         + _ladder_table(views) + "\n\n"
-        "- **A1 → B1** is what the answer-key column is worth. A1 scores "
-        "against `gold_code_description`, the ICD catalogue wording, exactly as "
-        "the original request described. B1 scores against the phrase the note "
-        "actually contains. The two agree in only 4.5% of rows corpus-wide — "
-        "the note says `depression`, the catalogue says `Major depressive "
-        "disorder, single episode, unspecified` — so A1 is near-zero by "
-        "construction. That is a property of the two columns, not a fault in "
-        "the model or in the data as built.\n"
-        "- **B1 → B2** is what balanced sampling changes. B1 runs on the 24 "
-        "notes reachable from the 100-row sample cut, which are 17 Inpatient "
-        "and 7 Profee. B2 runs on 25 of each, drawn with seed 13."
+        + _ladder_notes(views)
     )
 
     if by_type:
@@ -227,10 +254,14 @@ def build_report(views, run_meta):
         "billed both ways (some Profee rows, some Inpatient) and are counted as "
         "Inpatient. Their gold therefore includes Profee-billed evidence, which "
         "blurs the contrast between the two strata slightly.\n\n"
-        f"Generation hit the token cap on **{run_meta.get('n_cap_hits', 0)}** "
-        "chunks. This must be 0; if it is not, replies were truncated mid-JSON "
-        "and recall is understated — raise `MDACE_MAX_NEW_TOKENS` to 1024 and "
-        "rerun."
+        f"Generation hit the token cap on **{run_meta.get('n_cap_hits', 0)}** of "
+        f"{run_meta.get('n_chunks', 0)} chunks. Those replies were cut off "
+        "mid-JSON; the parser salvages the complete part, but anything after the "
+        "cut is lost, so **recall above is a floor rather than an estimate**. "
+        "Raising the cap does not fix this — it was already tried, and the same "
+        "chunks bound at 1024 and 1536, which is a repetition loop rather than a "
+        "length problem. The lever is output volume: a narrower prompt, or "
+        "smaller `--chunk-words` so each call has less to describe."
     )
 
     parts.append(

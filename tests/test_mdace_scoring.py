@@ -342,14 +342,24 @@ def test_write_report_round_trips(tmp_path):
 # --------------------------------------------------------------------------
 
 def _sample(n_strat=3, n_ship=2, overlap=1):
-    """Records shaped like the real sample: stratified first, then the cut."""
+    """Records shaped like the real sample: stratified first, then the cut.
+
+    Notes in the cut carry two gold terms and ship only one, mirroring the real
+    file: 99 of the 195 phrases those notes really hold. Without that gap the
+    A2 -> B1 step has nothing to measure.
+    """
     recs = []
     for i in range(n_strat):
-        r = _record(100 + i, "Profee", terms=[f"s{i}"], text=f"s{i}")
-        r["in_stratified"], r["in_sample100"] = True, i < overlap
+        in_cut = i < overlap
+        terms = [f"s{i}", f"s{i}x"] if in_cut else [f"s{i}"]
+        r = _record(100 + i, "Profee", terms=terms, text=" ".join(terms),
+                    shipped=[f"s{i}"] if in_cut else ())
+        r["in_stratified"], r["in_sample100"] = True, in_cut
         recs.append(r)
     for i in range(n_ship - overlap):
-        r = _record(200 + i, "Inpatient", terms=[f"p{i}"], text=f"p{i}")
+        terms = [f"p{i}", f"p{i}x"]
+        r = _record(200 + i, "Inpatient", terms=terms, text=" ".join(terms),
+                    shipped=[f"p{i}"])
         r["in_stratified"], r["in_sample100"] = False, True
         recs.append(r)
     return recs
@@ -372,13 +382,33 @@ def test_phase1_emits_only_the_headline_view():
     assert views["B2"]["metrics"]["n_notes"] == len(strat)
 
 
-def test_phase2_completes_all_three_views():
+def test_phase2_completes_every_view():
     from src.evaluate_mdace import build_views
 
     recs = _sample()
     preds = {r["note_id"]: set(r["gold_terms"]) for r in recs}
     views = build_views(recs, preds)
-    assert set(views) == {"A1", "B1", "B2"}
+    assert set(views) == {"A1", "A2", "B1", "B2"}
+
+
+def test_a2_scores_against_the_phrases_the_cut_actually_ships():
+    """A2 exists to be comparable with a number computed from that file alone.
+
+    It must use `sample100_terms`, not the full gold — otherwise the A2 -> B1
+    jump collapses to zero and the cost of the truncated key is invisible.
+    """
+    from src.evaluate_mdace import build_views
+
+    recs = _sample()
+    preds = {r["note_id"]: set(r["gold_terms"]) for r in recs}
+    views = build_views(recs, preds)
+
+    shipped_gold = sum(len(r["sample100_terms"])
+                       for r in recs if r["in_sample100"])
+    full_gold = sum(len(r["gold_terms"]) for r in recs if r["in_sample100"])
+
+    assert views["A2"]["metrics"]["n_gold"] == shipped_gold
+    assert views["B1"]["metrics"]["n_gold"] == full_gold
 
 
 def test_no_views_when_nothing_has_run():
