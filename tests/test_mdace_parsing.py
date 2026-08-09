@@ -254,3 +254,24 @@ def test_prompt_example_is_synthetic():
     prompt = build_prompt("x")
     assert "Known lastname" in prompt      # the placeholder form, not real data
     assert "___" not in prompt             # MIMIC-IV style, wrong corpus
+
+
+def test_prompt_fingerprint_is_stable_and_short():
+    from src.prompt_mdace import prompt_fingerprint
+
+    assert prompt_fingerprint() == prompt_fingerprint()
+    assert len(prompt_fingerprint()) == 8
+
+
+def test_run_tag_changes_when_the_prompt_changes():
+    """The resume cache is keyed on the run directory, so anything that alters
+    model output must appear in it. It did not include the prompt, and a prompt
+    edit therefore replayed the previous run: "cached 5, to run 0", old numbers,
+    no model call."""
+    from src.evaluate_mdace import run_tag
+
+    args = (13, 400, 80, "medgemma-4b-it", 1024)
+    assert run_tag(*args, prompt_id="aaaaaaaa") != run_tag(*args, prompt_id="bbbbbbbb")
+    assert run_tag(*args, prompt_id="aaaaaaaa").endswith("_paaaaaaaa")
+    # Omitting it keeps the old name, so existing run dirs stay readable.
+    assert run_tag(*args) == "medgemma-4b-it_seed13_cw400_ov80_mnt1024"

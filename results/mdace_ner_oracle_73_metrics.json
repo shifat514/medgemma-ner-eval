@@ -12,7 +12,8 @@
     "notes_missing": [],
     "oracle": true,
     "overlap_words": 80,
-    "run_dir": "outputs/mdace/medgemma-4b-it-ORACLE_seed13_cw400_ov80_mnt1024",
+    "prompt_id": "090a0072",
+    "run_dir": "outputs/mdace/medgemma-4b-it-ORACLE_seed13_cw400_ov80_mnt1024_p090a0072",
     "sample_file": "data/samples/mdace_sample.jsonl",
     "seed": 13
   },

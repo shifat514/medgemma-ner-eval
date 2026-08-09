@@ -45,6 +45,7 @@ example input unextracted — a negative example teaches this far better than an
 omitted category does. The 5.5% ceiling is documented in the report.
 """
 
+import hashlib
 import json
 import re
 
@@ -313,6 +314,23 @@ _INSTRUCTION = (
     "Now do the same for this text.\n"
     "Text:\n"
 )
+
+
+def prompt_fingerprint():
+    """Short hash of the prompt, for the run-directory name.
+
+    The resume cache is keyed on the run directory, and every other input that
+    changes the model's output — model id, seed, chunk size, token cap — is
+    already in that name. The prompt was not, so editing it and re-running
+    silently replayed the previous run's results: "cached 5, to run 0", numbers
+    from the old prompt, no model call made.
+
+    Including this means a prompt edit lands in a fresh directory automatically,
+    and the old results stay intact next to it rather than being overwritten or
+    half-merged.
+    """
+    body = (_SYSTEM + _INSTRUCTION).encode("utf-8")
+    return hashlib.sha256(body).hexdigest()[:8]
 
 
 def build_prompt(chunk_text):

@@ -58,15 +58,26 @@ from .mdace_config import (
     SAMPLE_FILE,
     SEED,
 )
-from .prompt_mdace import build_messages, parse_terms_diag
+from .prompt_mdace import build_messages, parse_terms_diag, prompt_fingerprint
 from .report_mdace import write_report
 from .term_scoring import score_by_chart_type, score_view
 
 
-def run_tag(seed, chunk_words, overlap_words, model_name, max_new_tokens):
-    """Run directory name. Excludes note count so runs share cached work."""
+def run_tag(seed, chunk_words, overlap_words, model_name, max_new_tokens,
+            prompt_id=None):
+    """Run directory name. Excludes note count so runs share cached work.
+
+    Every input that changes what the model produces belongs here, because the
+    resume cache is keyed on this directory: a run whose notes are all cached
+    replays old results without calling the model at all. Model, seed, chunk
+    geometry and token cap were covered from the start; the PROMPT was not, so
+    editing it and re-running silently reported the previous prompt's numbers.
+    `prompt_id` closes that hole -- a prompt edit now lands in a fresh directory
+    and the old results survive beside it.
+    """
     safe = model_name.replace("/", "_")
-    return f"{safe}_seed{seed}_cw{chunk_words}_ov{overlap_words}_mnt{max_new_tokens}"
+    tag = f"{safe}_seed{seed}_cw{chunk_words}_ov{overlap_words}_mnt{max_new_tokens}"
+    return f"{tag}_p{prompt_id}" if prompt_id else tag
 
 
 def make_oracle_run_fn(record):
@@ -381,7 +392,8 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
     if oracle:
         label = f"oracle_{label}"
 
-    tag = run_tag(seed, chunk_words, overlap_words, model_name, cap)
+    tag = run_tag(seed, chunk_words, overlap_words, model_name, cap,
+                  prompt_id=prompt_fingerprint())
     run_dir = os.path.join(output_dir, tag)
     os.makedirs(run_dir, exist_ok=True)
     per_note_path = os.path.join(run_dir, "per_note.jsonl")
@@ -401,6 +413,7 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
     print(f"chunks:   {sum(r.get('n_chunks', 0) for r in todo)} to run")
     print(f"chunking: {chunk_words} words / {overlap_words} overlap")
     print(f"model:    {model_id}  4bit={LOAD_IN_4BIT}  max_new_tokens={cap}")
+    print(f"prompt:   {prompt_fingerprint()}  (a prompt edit starts a fresh cache)")
     print(f"run dir:  {run_dir}")
 
     pipe = None
@@ -481,6 +494,7 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
         "model_name": model_name,
         "load_in_4bit": LOAD_IN_4BIT,
         "max_new_tokens": cap,
+        "prompt_id": prompt_fingerprint(),
         "chunk_words": chunk_words,
         "overlap_words": overlap_words,
         "n_notes_scored": len(scored),
