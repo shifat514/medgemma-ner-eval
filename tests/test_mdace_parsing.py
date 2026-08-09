@@ -16,7 +16,13 @@ import json
 
 import pytest
 
-from src.prompt_mdace import build_messages, build_prompt, parse_terms, parse_terms_diag
+from src.prompt_mdace import (
+    _EXAMPLE_OUTPUT,
+    build_messages,
+    build_prompt,
+    parse_terms,
+    parse_terms_diag,
+)
 
 
 def _texts(reply):
@@ -163,9 +169,32 @@ def test_non_string_replies_do_not_raise(reply):
 
 def test_prompt_asks_for_conditions_procedures_and_injuries():
     """A conditions-only prompt caps recall at 0.84; these three reach 94.5%."""
-    prompt = build_prompt("some note text")
-    for category in ("Condition", "Procedure", "Injury"):
+    prompt = build_prompt("some note text").lower()
+    for category in ("diagnosis", "procedure", "injury"):
         assert category in prompt
+
+
+def test_prompt_asks_for_a_flat_list_of_strings():
+    """Typed objects spend ~14 tokens per finding against ~6 for a bare string,
+    and two thirds of that is a field the scorer discards. At 1024 tokens the
+    typed form truncated 7 of 15 smoke chunks."""
+    import json as _json
+
+    parsed = _json.loads(_EXAMPLE_OUTPUT)
+    assert set(parsed) == {"terms"}
+    assert all(isinstance(t, str) for t in parsed["terms"])
+    assert "flat list of plain strings" in build_prompt("x")
+
+
+def test_example_output_is_much_cheaper_than_the_typed_form():
+    """Guards the whole point of the change: if someone reintroduces type
+    fields, this fails rather than quietly costing 2.5x the generation."""
+    import json as _json
+
+    terms = _json.loads(_EXAMPLE_OUTPUT)["terms"]
+    typed = _json.dumps({"terms": [{"text": t, "type": "Condition"}
+                                   for t in terms]})
+    assert len(_EXAMPLE_OUTPUT) < 0.55 * len(typed)
 
 
 def test_prompt_excludes_medications():

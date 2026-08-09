@@ -1,13 +1,27 @@
 """Billing-evidence extraction prompt and reply parsing for MDACE note chunks.
 
-TYPE LABELS ARE NOT SCORED. Scoring compares normalized term strings only, so a
-term labelled "Procedure" that gold treats as a condition still counts as a hit.
-That makes this parser deliberately far more permissive than
-``prompt_mimic.parse_entities_diag``, which had to reject items with an
+TYPE LABELS ARE NEITHER SCORED NOR REQUESTED. Scoring compares normalized term
+strings only, so a term labelled "Procedure" that gold treats as a condition
+still counts as a hit. That makes this parser deliberately far more permissive
+than ``prompt_mimic.parse_entities_diag``, which had to reject items with an
 unrecognized type because a wrong type there was both a false positive and a
 still-missed false negative. Here the only failure mode is losing usable text,
-so anything carrying a string is kept. Types are recorded for diagnostics and
-never consulted by the scorer.
+so anything carrying a string is kept — bare strings included.
+
+The prompt asks for a flat list of strings rather than typed objects, and that
+is a throughput decision, not a stylistic one. Generation is sequential: every
+output token costs a full forward pass, so wall-clock time and the truncation
+risk both scale with how much the model has to WRITE. Input length barely
+matters by comparison — the prompt is read in a single pass.
+
+    {"text": "atrial fibrillation", "type": "Condition"},   ~14 tokens
+    "atrial fibrillation",                                   ~6 tokens
+
+Two thirds of every item was a field the scorer discards. At 1024 tokens the
+typed form still truncated 7 of 15 smoke chunks; the flat form fits ~2.5x more
+findings in the same budget and generates proportionally faster. The cost is
+losing the type histogram as a diagnostic — recoverable any time by running one
+smoke pass with the typed prompt.
 
 WHY THE PROMPT ASKS FOR MORE THAN DIAGNOSES — AND WHERE IT STOPS. Only 84% of
 gold rows are plain conditions; the rest are procedures (CPT 3.6%, ICD-10-PCS
@@ -232,33 +246,38 @@ _EXAMPLE_INPUT = (
     "ago. Continued on aspirin 81mg daily for secondary prevention."
 )
 
-# Note what is ABSENT: "aspirin 81mg daily" and the tobacco line appear in the
-# example input and are deliberately NOT in this output. A negative example is
-# the strongest signal available that medication lists are out of scope — an
-# earlier version that merely omitted the category still saw the model return
-# 33% medication items.
+# Two things are load-bearing here. The output is a flat list of STRINGS, not
+# typed objects, so the model spends its token budget on findings rather than on
+# a field the scorer discards. And "aspirin 81mg daily" and the tobacco line
+# appear in the example input yet are deliberately absent from this output — a
+# negative example is the strongest available signal that medication lists are
+# out of scope, after a version that merely omitted the category still drew 33%
+# medication items.
 _EXAMPLE_OUTPUT = json.dumps({"terms": [
-    {"text": "HTN", "type": "Condition"},
-    {"text": "type 2 diabetes", "type": "Condition"},
-    {"text": "chest pain", "type": "Condition"},
-    {"text": "cardiac catheterization", "type": "Procedure"},
-    {"text": "fall", "type": "Injury"},
-    {"text": "fracture of the left wrist", "type": "Injury"},
+    "HTN",
+    "type 2 diabetes",
+    "chest pain",
+    "cardiac catheterization",
+    "fall",
+    "fracture of the left wrist",
 ]}, indent=None)
 
 _INSTRUCTION = (
     "Extract every DIAGNOSIS, PROCEDURE and INJURY from the clinical text "
     "below.\n"
     "\n"
-    "Use exactly these three categories:\n"
-    '  "Condition" - a disease, diagnosis, symptom, or clinical finding '
+    "Extract all three of these:\n"
+    "  - a disease, diagnosis, symptom, or clinical finding "
     "(e.g. sepsis, atrial fibrillation, chest pain, acute kidney injury)\n"
-    '  "Procedure" - something that was performed on the patient '
+    "  - a procedure performed on the patient "
     "(e.g. colonoscopy, intubation, CABG, cardiac catheterization)\n"
-    '  "Injury"    - an injury, fracture, wound, burn, poisoning, or overdose '
+    "  - an injury, fracture, wound, burn, poisoning, or overdose "
     "(e.g. fall, hip fracture, laceration)\n"
     "\n"
     "Rules:\n"
+    "0. Return a JSON object with ONE key, \"terms\", whose value is a flat "
+    "list of plain strings. Do NOT label them, do NOT give each one a type, do "
+    "NOT wrap them in objects. Just the phrases.\n"
     "1. Do NOT extract medications, drug names, doses, or IV fluids. A "
     "medication list is not a finding. If the note says \"Continued on aspirin "
     "81mg daily\", extract nothing from it.\n"
@@ -275,7 +294,7 @@ _INSTRUCTION = (
     "include it inside a term.\n"
     "6. Extract from the WHOLE text, including narrative prose and past "
     "medical history, not only from headed lists.\n"
-    "7. Return ONE FLAT list, and do not repeat the same term twice.\n"
+    "7. Do not repeat the same term twice.\n"
     "8. Return ONLY the JSON object — no prose, no markdown fences, no "
     "explanation.\n"
     "\n"
