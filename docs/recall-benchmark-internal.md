@@ -198,3 +198,68 @@ Two implementations landing in the same place is a real cross-check. Keep it.
 L5 is now a planned step rather than a contingency: he expects the assessment to need
 it. Build it after L1-L4 are producing numbers, and run it on the pairs each level
 newly accepted rather than on everything, so the cost stays bounded.
+
+---
+
+## Starting a fresh session from this file
+
+Everything below lived in the conversation that produced this plan and is not
+recoverable from the repo alone.
+
+### Where things are
+
+| | |
+|---|---|
+| repo | `/home/shifat/zeda_ml_works/medgemma-ner-eval` |
+| branch | `mdace-recall-benchmark` (created, 3 doc commits, **not pushed**) |
+| the one input file | `/home/shifat/zeda_ml_works/zeda_mimic_datasets/8-07-mdace-ner-eval_sample_100-LOCAL.jsonl` |
+| S3 mirror | `s3://zeda-mimic-dataset/eval_datasets/` (credentials live in the repo's `.env`, which the shell does **not** auto-source: `set -a && . ./.env && set +a`) |
+| Colab notebook to adapt | `colab_runner_mdace.ipynb` |
+
+### Reuse unchanged
+
+- `src/chunking.py` — `chunk_windows(n_tokens, 400, 80)` and `tokenize_with_spans`.
+- `src/model.py` — `load_medgemma`, `run_messages`, `count_tokens`. 4-bit, greedy.
+- The resume pattern in `src/evaluate_mdace.py`: append each note's result as it
+  finishes, skip note_ids already present, key the run directory on model + seed +
+  chunk geometry + token cap + **prompt hash**. That last one is load-bearing; a
+  prompt edit without it silently replays the previous prompt's numbers.
+- The tolerant reply parser in `src/prompt_mdace.py`, including
+  `_salvage_truncated_strings` for replies cut off at the token cap.
+
+### Do not touch
+
+`src/evaluate_mimic.py`, `src/prompt_mimic.py`, `src/mimic_config.py`,
+`src/datasets/mimic_meds.py`, `src/report_mimic.py`, `src/align.py`,
+`src/scoring.py`. Different corpus (MIMIC-IV), different task. The `mdace_*` and
+`term_scoring` modules from the previous branch should also be left alone, so the
+0.53 starting point stays reproducible; add new modules alongside them.
+
+### PHI rules, non-negotiable
+
+MDACE is built on MIMIC-III, credentialed PhysioNet data.
+
+- Note text, extracted terms, and any per-example dump stay under the gitignored
+  `outputs/` tree. Never commit them, never paste note content anywhere.
+- Keep the counts file and the extracted-terms file separate: counts are integers
+  and shareable, terms are phrases copied out of patient notes.
+- `results/*.md` and `results/*.json` are aggregate-only and safe to commit.
+- On Colab, point the output dir at mounted Drive so a disconnect cannot lose a run.
+
+### Two design calls already made
+
+**L4's embedding backend is optional.** Import it lazily and skip L4 with a clear
+message if the package is absent, so L1-L3 stay unit-testable on a CPU-only laptop
+and L4 runs on Colab. A general-purpose encoder is not enough; it will not know
+`HTN`.
+
+**Verify the harness before spending GPU time.** Feed the gold accept-sets back
+through the pipeline as if they were model output. Recall must come out 1.0000 at
+L1. Anything less is a bug in chunking, normalization or matching, not a result.
+This caught real bugs twice on the previous branch and costs ten seconds.
+
+### Known trap
+
+Re-running after a prompt edit prints `cached N, to run 0` and reports the old
+prompt's numbers in about a second, with no error. If a run finishes suspiciously
+fast, check the `run dir:` line for the prompt hash before believing anything.
