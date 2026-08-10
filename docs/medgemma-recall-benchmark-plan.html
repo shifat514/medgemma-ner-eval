@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MedGemma Recall Benchmark: Execution Plan</title>
+<style>
+  :root{
+    --ink:#15181c;
+    --body:#2c3238;
+    --muted:#606a76;
+    --rule:#d5dae1;
+    --rule-soft:#e8ecf1;
+    --accent:#1d5a80;
+    --accent-tint:#eef3f7;
+    --flag:#8a4b1f;
+    --flag-tint:#faf2ea;
+    --paper:#ffffff;
+  }
+  @page{ size:A4; margin:0; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--paper);
+    color:var(--body);
+    font:11.4px/1.45 Georgia,"Times New Roman",serif;
+    padding:12mm 12mm 8mm;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  .masthead{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap:12px; border-bottom:2px solid var(--ink); padding-bottom:6px;
+  }
+  h1{
+    font:22.5px/1.12 Georgia,serif; color:var(--ink); margin:0;
+    letter-spacing:-.005em; text-wrap:balance;
+  }
+  .sub{ font:italic 11.6px/1.3 Georgia,serif; color:var(--muted); margin:3px 0 0; }
+  .stamp{
+    font:8.9px/1.4 -apple-system,"Helvetica Neue",Arial,sans-serif;
+    text-transform:uppercase; letter-spacing:.1em; color:var(--muted);
+    text-align:right; white-space:nowrap;
+  }
+  .cols{ column-count:2; column-gap:8mm; column-rule:1px solid var(--rule-soft); margin-top:7px; }
+  section{ break-inside:avoid; margin:0 0 9px; }
+  h2{
+    font:700 8.5px/1 -apple-system,"Helvetica Neue",Arial,sans-serif;
+    text-transform:uppercase; letter-spacing:.13em; color:var(--accent);
+    margin:0 0 4px; padding-bottom:3px; border-bottom:1px solid var(--rule);
+  }
+  p{ margin:0 0 5px; }
+  p+p{ margin-top:-1px; }
+  strong{ color:var(--ink); font-weight:700; }
+  code{
+    font:9.9px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color:var(--ink); background:var(--accent-tint);
+    padding:.5px 3px; border-radius:2px;
+  }
+  ul{ margin:0 0 5px; padding-left:13px; }
+  li{ margin-bottom:2px; }
+  table{ width:100%; border-collapse:collapse; margin:0 0 5px;
+         font:9.9px/1.35 -apple-system,"Helvetica Neue",Arial,sans-serif;
+         font-variant-numeric:tabular-nums; }
+  th{
+    text-align:left; font:700 8.2px/1 -apple-system,Arial,sans-serif;
+    text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
+    border-bottom:1px solid var(--rule); padding:0 5px 3px 0;
+  }
+  td{ padding:3px 5px 3px 0; border-bottom:1px solid var(--rule-soft);
+      vertical-align:top; color:var(--body); }
+  tr:last-child td{ border-bottom:none; }
+  td.k{ color:var(--ink); font-weight:700; white-space:nowrap; }
+  td.n{ text-align:right; color:var(--ink); font-weight:700; white-space:nowrap; }
+  .facts{ display:grid; grid-template-columns:repeat(2,1fr); gap:3px 8px; margin-bottom:5px; }
+  .fact{ border-left:2px solid var(--accent); padding-left:5px; }
+  .fact b{ display:block; font:700 15px/1.05 Georgia,serif; color:var(--ink);
+           font-variant-numeric:tabular-nums; }
+  .fact span{ font:8.2px/1.25 -apple-system,Arial,sans-serif; text-transform:uppercase;
+              letter-spacing:.07em; color:var(--muted); }
+  .note{
+    background:var(--flag-tint); border-left:2.5px solid var(--flag);
+    padding:6px 8px; margin:0 0 6px;
+  }
+  .note h3{
+    font:700 8.5px/1 -apple-system,Arial,sans-serif; text-transform:uppercase;
+    letter-spacing:.11em; color:var(--flag); margin:0 0 3px;
+  }
+  .note p:last-child{ margin-bottom:0; }
+  .deferred{ color:var(--muted); font-style:italic; }
+  footer{
+    margin-top:5px; padding-top:5px; border-top:1px solid var(--rule);
+    font:9.1px/1.35 -apple-system,Arial,sans-serif; color:var(--muted);
+    display:flex; justify-content:space-between; gap:10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div>
+    <h1>MedGemma recall benchmark: MDACE billing extraction</h1>
+    <p class="sub">How far a 4B open model gets at pulling codable findings out of a clinical note.</p>
+  </div>
+  <div class="stamp">Execution plan<br>10 Aug 2026<br>Shifat Habib</div>
+</div>
+
+<div class="cols">
+
+<section>
+  <h2>What is being measured</h2>
+  <p>MedGemma reads a note and extracts medical findings. <strong>It does not produce codes.</strong> Downstream, each extracted term goes into the SNOMED lookup, which returns the adjacent ICD code. Asking an LLM for codes directly compounds two hard problems into one and produces too many errors.</p>
+  <p>Extraction is therefore the ceiling on the whole pipeline: the lookup can never recover a code whose term was never extracted. This benchmark measures where that ceiling sits for <strong>MedGemma-4B, zero-shot</strong>. There is no baseline to beat. The output is a number, and Ehtesham sets the bar it has to clear.</p>
+</section>
+
+<section>
+  <h2>Data: one file, nothing else</h2>
+  <p><code>8-07-mdace-ner-eval_sample_100-LOCAL.jsonl</code>. Self-contained: the note text is in the file, so no join and no sampling decisions.</p>
+  <div class="facts">
+    <div class="fact"><b>24</b><span>notes</span></div>
+    <div class="fact"><b>100</b><span>annotation rows</span></div>
+    <div class="fact"><b>91</b><span>distinct codes</span></div>
+    <div class="fact"><b>82</b><span>model calls · ~1&nbsp;h T4</span></div>
+  </div>
+  <p>Long notes are split into overlapping 400-word windows; extracted terms are pooled per note.</p>
+</section>
+
+<section>
+  <h2>What counts as a correct extraction</h2>
+  <p>Three columns describe each billed code. <strong>Matching any one of them counts.</strong></p>
+  <table>
+    <tr><td class="k">Evidence text</td><td>what the note says (<em>depression</em>)</td></tr>
+    <tr><td class="k">Code description</td><td>ICD catalogue wording (<em>Major depressive disorder, single episode, unspecified</em>)</td></tr>
+    <tr><td class="k">SNOMED terms</td><td>clinical synonyms for the same concept</td></tr>
+  </table>
+  <p>That gives a median of <strong>4 accepted phrasings per row</strong>, against 1 in the pilot. Recall is reported per row (100) and per distinct code (91).</p>
+</section>
+
+<section>
+  <h2>How a match is decided</h2>
+  <p>Matching is approximate, not exact. Each level contains the one above it, and <strong>recall is reported at every level</strong> so the cost of each degree of looseness is visible rather than hidden in one threshold.</p>
+  <table>
+    <tr><th>Level</th><th>Rule</th><th style="text-align:right">Catches</th></tr>
+    <tr><td class="k">L1 exact</td><td>identical after normalising</td><td style="text-align:right">baseline</td></tr>
+    <tr><td class="k">L2 contains</td><td>one is a whole-word subset of the other</td><td style="text-align:right">back pain ⊂ chronic back pain</td></tr>
+    <tr><td class="k">L3 similar</td><td>word overlap + character similarity</td><td style="text-align:right">typos, word order</td></tr>
+    <tr><td class="k">L4 embeddings</td><td>biomedical sentence model, cosine</td><td style="text-align:right">HTN → hypertension</td></tr>
+    <tr><td class="k deferred">L5 LLM judge</td><td class="deferred">model decides if two phrases mean the same</td><td style="text-align:right" class="deferred">deferred — see below</td></tr>
+  </table>
+  <p><strong>L4 is the level that earns its keep.</strong> Abbreviations are the largest single source of missed matches and no amount of string similarity reaches them: <em>CHF</em> and <em>congestive heart failure</em> share almost no characters. Only semantic matching closes that gap.</p>
+</section>
+
+<section>
+  <h2>What is reported</h2>
+  <table>
+    <tr><td class="k">Recall</td><td>headline. Of the billed codes, how many were found</td></tr>
+    <tr><td class="k">Precision, F1</td><td>secondary; false positives are watched, not ignored</td></tr>
+    <tr><td class="k">Terms per note</td><td>the volume the recall was bought with</td></tr>
+    <tr><td class="k">Not-in-note rate</td><td>hallucination: terms the model produced that aren't in the text</td></tr>
+  </table>
+  <p>Every figure is given at every matching level.</p>
+</section>
+
+<div class="note">
+  <h3>The number that makes recall meaningful</h3>
+  <p>With loose matching and no volume control, a model that lists every phrase in the note scores near 1.00. Recall alone therefore cannot rank two models — a smaller, more verbose one would appear to beat a larger, more disciplined one.</p>
+  <p>So recall is always quoted <strong>with the terms-per-note it was bought with</strong>: “0.72 at 20 terms per note”, never a bare 0.72. This is what keeps the benchmark usable when we compare MedGemma against a larger model later.</p>
+</div>
+
+<section>
+  <h2>Prompt change</h2>
+  <p>The pilot prompt asked the model to copy spans <em>verbatim</em>. That was right when the note's own wording was the only target; it is now wrong, because <code>HTN</code> can never string-match <em>Essential (primary) hypertension</em>.</p>
+  <p>The rewritten prompt asks for two fields per finding: the <strong>span</strong> as written in the note, and the <strong>standard clinical name</strong>. Either may match. MedGemma already knows the expansions, and the standard name is also what the SNOMED lookup wants downstream. To hold output length steady, the prompt asks for one entry per distinct finding and no repeats.</p>
+</section>
+
+<section>
+  <h2>Deferred: the LLM judge</h2>
+  <p>Recall rises at every level <em>by construction</em>, so L4 will always look best. The honest question is which level is still counting genuine matches, and the way to settle it is to have a model judge a sample of the pairs each level newly accepted.</p>
+  <p>It is slow and non-deterministic, so it is <strong>not run for now</strong>. It stays as the audit step, to be added when a specific level's number is challenged or when the result is close to the acceptance bar.</p>
+</section>
+
+<section>
+  <h2>Needed from Ehtesham</h2>
+  <table>
+    <tr><td class="k">Full SNOMED lists</td><td>the file ships <strong>24,333</strong> of <strong>270,287</strong> concepts, or <strong>9%</strong>. Every missing synonym is a match we cannot make. Procedure codes (CPT, ICD-10-PCS) have none at all</td></tr>
+    <tr><td class="k">The lookup</td><td>running our extracted terms through the real SNOMED lookup replaces this proxy with the true end-to-end number, and ends the threshold discussion</td></tr>
+    <tr><td class="k">Target recall</td><td>the figure that makes this a go</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Reference point</h2>
+  <p>A 50-note pilot on the wider MDACE corpus, scored the strict way (exact matching, evidence text only) returned <strong>recall 0.53</strong>, against Ehtesham's independently observed ≈0.5. That is the floor this plan is designed to lift: every change above widens what counts as correct without touching the model.</p>
+</section>
+
+</div>
+
+<footer>
+  <span><strong>Scope.</strong> Extraction only. ICD code prediction is a separate experiment and is not measured here.</span>
+  <span>MedGemma-4B-it · 4-bit · greedy · zero-shot</span>
+</footer>
+
+</body>
+</html>
