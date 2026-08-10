@@ -48,6 +48,12 @@ results/*.json
 !results/mdace_ner_*.md
 !results/mdace_ner_*.json
 
+# ...and the MDACE recall benchmark. Same rule again: counts, rates and
+# thresholds only. The findings, and every pair the ladder newly accepted at
+# each level, quote note text and stay in outputs/ (below).
+!results/mdace_recall_*.md
+!results/mdace_recall_*.json
+
 # Model weights (downloaded at runtime)
 *.bin
 *.safetensors

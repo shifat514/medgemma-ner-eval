@@ -1,6 +1,8 @@
 .PHONY: setup test smoke eval lint clean \
         mimic-sample mimic-smoke mimic-50 mimic-100 mimic-oracle mimic-check \
-        mdace-sample mdace-oracle mdace-smoke mdace-50 mdace-run
+        mdace-sample mdace-oracle mdace-smoke mdace-50 mdace-run \
+        recall-oracle recall-smoke recall-run recall-rescore recall-judge \
+        recall-questions clean-recall-runs
 
 # Install dependencies via uv
 setup:
@@ -91,3 +93,40 @@ mdace-50:
 # adds views A1 and B1. Resumable.
 mdace-run:
 	uv run python -m src.evaluate_mdace
+
+# --- MDACE recall benchmark (MIMIC-III) ---------------------------------------
+# REAL PATIENT DATA. Reads ONE file, 8-07-mdace-ner-eval_sample_100-LOCAL.jsonl,
+# which embeds note text — there is no join and no sample-building step. Point
+# RECALL_SAMPLE_FILE at your copy if it is not in the default location.
+
+# Harness ceiling — no model, no GPU, ~10s. Every source must read 1.0000 at L1
+# and the combined matching must show zero false positives. Run this BEFORE
+# spending GPU time; it caught real bugs twice on the previous branch.
+recall-oracle:
+	uv run python -m src.evaluate_recall --oracle
+
+# Smoke test: the 3 longest notes, keeping the raw replies. The multi-chunk
+# path, which is where truncation and OOM live (needs a GPU + HF login).
+recall-smoke:
+	uv run python -m src.evaluate_recall --smoke 3 --dump-replies
+
+# The benchmark: 24 notes / 82 chunks, ~1-1.5h on a T4. Resumable.
+recall-run:
+	uv run python -m src.evaluate_recall
+
+# Re-score a finished run with different thresholds. No model call, no GPU.
+recall-rescore:
+	uv run python -m src.evaluate_recall --score-only
+
+# L5: adjudicate the pairs L2-L4 newly accepted. `--judge medgemma` has the
+# model under test grade its own matches and says so; `--judge none` writes the
+# questions out for a human or an external model.
+recall-judge:
+	uv run python -m src.recall_judge --judge medgemma
+
+recall-questions:
+	uv run python -m src.recall_judge --judge none
+
+# Wipes cached per-note run state for the benchmark.
+clean-recall-runs:
+	rm -rf outputs/mdace_recall

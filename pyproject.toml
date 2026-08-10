@@ -19,6 +19,10 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
+# Only needed for L4 of the recall benchmark's matching ladder. It is imported
+# lazily and the ladder stops at L3 without it, so L1-L3 stay runnable on a
+# CPU-only laptop and only the GPU box needs this.
+embed = ["sentence-transformers>=3.0"]
 # Only needed to build the MIMIC sample from an s3:// source. The evaluation
 # itself reads a local file, so a GPU/Colab install does not need this.
 s3 = ["boto3>=1.34"]

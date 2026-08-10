@@ -5,7 +5,11 @@ Companion to `medgemma-recall-benchmark-plan.pdf`, which is Ehtesham Bhai's copy
 deliberately carries no project mechanics. This file holds everything that was cut
 from it, plus the reasoning behind the cuts.
 
-Status: plan only. Nothing built yet.
+Status: **built, L1-L5 in place, no GPU run yet.** The harness check passes and
+the ladder is verified end to end on synthetic predictions. What remains is the
+82-chunk run itself. See "What was built" at the bottom, which also records the
+one measurement that revised the plan: L4 does not do what this document
+assumed it would.
 
 ---
 
@@ -187,13 +191,13 @@ Two implementations landing in the same place is a real cross-check. Keep it.
 
 ## Build order
 
-1. Branch is created. Loader for `sample_100` (self-contained, no join).
-2. Accept-set construction from the three columns.
-3. Matching ladder L1-L4, thresholds configurable, newly-matched pairs dumped per level.
-4. Prompt rewrite, two fields.
-5. Report: recall and FP per level, and the per-source breakdown.
-6. Run: 82 chunks.
-7. L5 adjudication over the pairs L2-L4 newly accepted.
+1. ~~Branch is created. Loader for `sample_100` (self-contained, no join).~~ done
+2. ~~Accept-set construction from the three columns.~~ done
+3. ~~Matching ladder L1-L4, thresholds configurable, newly-matched pairs dumped per level.~~ done
+4. ~~Prompt rewrite, two fields.~~ done, hash `7f93b2f6`
+5. ~~Report: recall and FP per level, and the per-source breakdown.~~ done
+6. **Run: 82 chunks.** ← next, and the only step needing a GPU
+7. ~~L5 adjudication over the pairs L2-L4 newly accepted.~~ built; run it after step 6
 
 L5 is now a planned step rather than a contingency: he expects the assessment to need
 it. Build it after L1-L4 are producing numbers, and run it on the pairs each level
@@ -263,3 +267,80 @@ This caught real bugs twice on the previous branch and costs ten seconds.
 Re-running after a prompt edit prints `cached N, to run 0` and reports the old
 prompt's numbers in about a second, with no error. If a run finishes suspiciously
 fast, check the `run dir:` line for the prompt hash before believing anything.
+
+---
+
+## What was built
+
+New modules alongside the `mdace_*` and `term_scoring` ones, which are untouched
+so the 0.53 starting point stays reproducible.
+
+| module | what it is |
+|---|---|
+| `src/recall_config.py` | thresholds, paths, chunk geometry, gold sources |
+| `src/datasets/mdace_recall.py` | the loader and the accept-set construction |
+| `src/recall_matching.py` | the ladder: string rules, embeddings, the matching |
+| `src/prompt_recall.py` | the two-field prompt and its parser |
+| `src/recall_scoring.py` | aggregation into rows / codes / forms, per source |
+| `src/report_recall.py` | the committed markdown + metrics JSON |
+| `src/evaluate_recall.py` | the runner |
+| `src/recall_judge.py` | L5 |
+| `colab_runner_recall.ipynb` | the T4 runner |
+
+131 new tests, 470 in the suite, all passing on CPU with no model download.
+`make recall-oracle` passes: every source 1.0000 at L1, zero false positives on
+the combined matching. Run it before spending GPU time.
+
+Every plan number was checked against the file and holds: 24 notes, 82 chunks,
+100 rows, 91 codes, 99 evidence phrases, 91 descriptions, 142 SNOMED forms,
+median 4 accepted forms per row (min 2, max 5), 53 of 100 rows with SNOMED, 0 of
+15 CPT and 0 of 15 PCS rows with SNOMED. The measured string table in the ladder
+section reproduces exactly.
+
+### Three decisions this document did not make
+
+**L4 does not separate synonyms from near-misses.** This is the one that
+matters. The plan treats L4 as the level that finally works because it is the
+only one that reaches abbreviations. It reaches them and it does not separate
+them. On `NeuML/pubmedbert-base-embeddings`, sorted by cosine, the pairs we want
+and the pairs we do not are interleaved from top to bottom: `acute renal
+failure` against `chronic renal failure` scores **0.833**, above eight of the
+ten abbreviation pairs L4 exists to catch. Two other biomedical encoders are
+worse — `S-PubMedBert-MS-MARCO` saturates at 0.85-0.99 for everything including
+`pneumonia` against `fracture of left wrist`, and `MedEmbed-small-v0.1` ranks
+the `no evidence of sepsis` negation above HTN, CHF and MI.
+
+So the sentence in this document — *no string threshold separates the good rows
+from the bad ones, that is the whole argument for L4* — turns out to be true one
+level further up as well. The default cosine is 0.60, which is a floor chosen to
+reach every abbreviation measured rather than a cutoff that works; raising it
+loses synonyms without buying precision (0.60 catches 10/10 wanted and 5/7
+unwanted, 0.66 catches 6/10 and still admits 3/7). **L5 is therefore not a
+refinement of L4, it is what makes L4's gain interpretable at all.** The numbers
+are pinned in `recall_matching.MEASURED_COSINE` and the report prints the table
+rather than describing it.
+
+**The matching is max-cardinality, not plain greedy.** "One prediction to at
+most one gold form, greedy best-first" breaks on ties, and it breaks in exactly
+the case the harness check rests on: several findings compete for one form, one
+takes a form another needed, and the oracle reads under 1.0000 with no bug
+present. Each level now runs greedy by rule strictness then score — best-first
+survives wherever it is meaningful — then augments to maximum cardinality over
+what is left. Lower-level assignments are frozen, so per-level attribution and
+the dumped pairs stay stable.
+
+**Rows and codes are the quotable units; forms is a diagnostic.** A row is
+recalled by matching any one of its ~4 accepted forms, and matching is 1:1, so a
+model that recalls every row while offering one phrasing each leaves most forms
+unmatched by construction. Combined form recall has a ceiling set by how many
+phrasings the model emits, not by how much it found. It is carried because the
+per-source breakdown is measured in forms and the two have to reconcile.
+
+### Open question
+
+L5's judge defaults to the same 4-bit MedGemma the benchmark runs, which is free
+on a box that already has it loaded and is the model under test grading its own
+matches. The summary and the report say so out loud. `--judge none` writes the
+questions out for a human or a stronger model and reads answers back via
+`--verdicts`. Which one the reported figures should use is a call worth making
+before the write-up, not after.
