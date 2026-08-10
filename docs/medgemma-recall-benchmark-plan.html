@@ -22,71 +22,72 @@
   body{
     background:var(--paper);
     color:var(--body);
-    font:11.3px/1.47 Georgia,"Times New Roman",serif;
-    padding:12mm 12mm 8mm;
+    font:10.6px/1.44 Georgia,"Times New Roman",serif;
+    padding:11mm 11mm 7mm;
     -webkit-print-color-adjust:exact; print-color-adjust:exact;
   }
   .masthead{
     display:flex; align-items:flex-end; justify-content:space-between;
-    gap:14px; border-bottom:2px solid var(--ink); padding-bottom:7px;
+    gap:14px; border-bottom:2px solid var(--ink); padding-bottom:6px;
   }
   h1{
-    font:22.5px/1.12 Georgia,serif; color:var(--ink); margin:0;
+    font:21px/1.12 Georgia,serif; color:var(--ink); margin:0;
     letter-spacing:-.006em; text-wrap:balance;
   }
-  .sub{ font:italic 11.5px/1.3 Georgia,serif; color:var(--muted); margin:4px 0 0; }
+  .sub{ font:italic 10.8px/1.3 Georgia,serif; color:var(--muted); margin:3px 0 0; }
   .stamp{
-    font:8.7px/1.42 -apple-system,"Helvetica Neue",Arial,sans-serif;
+    font:8.2px/1.42 -apple-system,"Helvetica Neue",Arial,sans-serif;
     text-transform:uppercase; letter-spacing:.1em; color:var(--muted);
     text-align:right; white-space:nowrap;
   }
-  .cols{ column-count:2; column-gap:8mm; column-rule:1px solid var(--rule-soft); margin-top:9px; }
-  section{ break-inside:avoid; margin:0 0 9px; }
+  .cols{ column-count:2; column-gap:7mm; column-rule:1px solid var(--rule-soft); margin-top:8px; }
+  section{ break-inside:avoid; margin:0 0 8px; }
   h2{
-    font:700 8.4px/1 -apple-system,"Helvetica Neue",Arial,sans-serif;
+    font:700 7.9px/1 -apple-system,"Helvetica Neue",Arial,sans-serif;
     text-transform:uppercase; letter-spacing:.13em; color:var(--accent);
-    margin:0 0 5px; padding-bottom:3px; border-bottom:1px solid var(--rule);
+    margin:0 0 4px; padding-bottom:3px; border-bottom:1px solid var(--rule);
   }
-  p{ margin:0 0 6px; }
+  p{ margin:0 0 5px; }
   strong{ color:var(--ink); font-weight:700; }
   code{
-    font:9.6px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font:9.1px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     color:var(--ink); background:var(--accent-tint);
     padding:.5px 3px; border-radius:2px;
   }
-  ul{ margin:0 0 6px; padding-left:14px; }
-  li{ margin-bottom:3px; }
-  table{ width:100%; border-collapse:collapse; margin:0 0 6px;
-         font:9.7px/1.36 -apple-system,"Helvetica Neue",Arial,sans-serif;
+  ol{ margin:0 0 5px; padding-left:15px; }
+  li{ margin-bottom:2.5px; }
+  table{ width:100%; border-collapse:collapse; margin:0 0 5px;
+         font:9.2px/1.34 -apple-system,"Helvetica Neue",Arial,sans-serif;
          font-variant-numeric:tabular-nums; }
   th{
-    text-align:left; font:700 8.0px/1 -apple-system,Arial,sans-serif;
-    text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
-    border-bottom:1px solid var(--rule); padding:0 5px 4px 0;
+    text-align:left; font:700 7.5px/1.15 -apple-system,Arial,sans-serif;
+    text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+    border-bottom:1px solid var(--rule); padding:0 4px 3px 0;
   }
-  td{ padding:4px 5px 4px 0; border-bottom:1px solid var(--rule-soft);
+  td{ padding:3.5px 4px 3.5px 0; border-bottom:1px solid var(--rule-soft);
       vertical-align:top; color:var(--body); }
   tr:last-child td{ border-bottom:none; }
   td.k{ color:var(--ink); font-weight:700; white-space:nowrap; }
-  .facts{ display:flex; gap:10px; margin-bottom:6px; }
+  td.c{ text-align:center; }
+  .facts{ display:flex; gap:9px; margin-bottom:5px; }
   .fact{ border-left:2px solid var(--accent); padding-left:6px; flex:1; }
-  .fact b{ display:block; font:700 15.5px/1.05 Georgia,serif; color:var(--ink);
+  .fact b{ display:block; font:700 14.5px/1.05 Georgia,serif; color:var(--ink);
            font-variant-numeric:tabular-nums; }
-  .fact span{ font:8.0px/1.25 -apple-system,Arial,sans-serif; text-transform:uppercase;
-              letter-spacing:.07em; color:var(--muted); }
+  .fact span{ font:7.5px/1.25 -apple-system,Arial,sans-serif; text-transform:uppercase;
+              letter-spacing:.06em; color:var(--muted); }
   .note{
     background:var(--flag-tint); border-left:2.5px solid var(--flag);
-    padding:7px 9px; margin:0 0 7px;
+    padding:6px 8px; margin:0 0 7px;
   }
   .note h3{
-    font:700 8.4px/1 -apple-system,Arial,sans-serif; text-transform:uppercase;
-    letter-spacing:.11em; color:var(--flag); margin:0 0 4px;
+    font:700 7.9px/1 -apple-system,Arial,sans-serif; text-transform:uppercase;
+    letter-spacing:.11em; color:var(--flag); margin:0 0 3px;
   }
   .note p:last-child{ margin-bottom:0; }
-  .deferred{ color:var(--muted); font-style:italic; }
+  .soft{ color:var(--muted); }
   footer{
-    margin-top:7px; padding-top:6px; border-top:1px solid var(--rule);
-    font:9.0px/1.35 -apple-system,Arial,sans-serif; color:var(--muted);
+    margin-top:6px; padding-top:5px; border-top:1px solid var(--rule);
+    font:8.4px/1.35 -apple-system,Arial,sans-serif; color:var(--muted);
     display:flex; justify-content:space-between; gap:12px;
   }
 </style>
@@ -121,7 +122,7 @@
 
 <section>
   <h2>What counts as a correct extraction</h2>
-  <p>Three columns describe each billed code. <strong>Matching any one of them counts.</strong></p>
+  <p>Three sources describe each billed code. <strong>Matching any one of them counts</strong>, and each is also scored on its own.</p>
   <table>
     <tr><td class="k">Evidence text</td><td>what the note says (<em>depression</em>)</td></tr>
     <tr><td class="k">Code description</td><td>ICD catalogue wording (<em>Major depressive disorder, single episode, unspecified</em>)</td></tr>
@@ -132,51 +133,63 @@
 
 <section>
   <h2>How a match is decided</h2>
-  <p>Matching is approximate, not exact. Each level contains the one above it, and <strong>recall is reported at every level</strong>, so the cost of each degree of looseness is visible rather than hidden inside one threshold.</p>
+  <p>Matching is approximate, not exact. Each level contains the one above it, and <strong>every figure is reported at every level</strong>, so the cost of each degree of looseness is visible rather than hidden inside one threshold.</p>
   <table>
     <tr><th>Level</th><th>Rule</th><th style="text-align:right">Catches</th></tr>
     <tr><td class="k">L1 exact</td><td>identical after normalising</td><td style="text-align:right">baseline</td></tr>
     <tr><td class="k">L2 contains</td><td>one is a whole-word subset of the other</td><td style="text-align:right">back pain in chronic back pain</td></tr>
     <tr><td class="k">L3 similar</td><td>word overlap and character similarity</td><td style="text-align:right">typos, word order</td></tr>
     <tr><td class="k">L4 embeddings</td><td>biomedical sentence model, cosine</td><td style="text-align:right">HTN to hypertension</td></tr>
-    <tr><td class="k deferred">L5 LLM judge</td><td class="deferred">a model decides whether two phrases mean the same</td><td style="text-align:right" class="deferred">deferred, see below</td></tr>
+    <tr><td class="k">L5 LLM judge</td><td>a model decides whether two phrases mean the same</td><td style="text-align:right">adjudication</td></tr>
   </table>
   <p><strong>L4 is the level that earns its keep.</strong> Abbreviations are the largest single source of missed matches, and no amount of string similarity reaches them: <em>CHF</em> and <em>congestive heart failure</em> share almost no characters. Only semantic matching closes that gap.</p>
   <p>The model is also asked for two things per finding: the phrase as written in the note, and the standard clinical name for it. Either may match, and the standard name is what the lookup would receive in production anyway.</p>
 </section>
 
 <section>
+  <h2>How it runs</h2>
+  <ol>
+    <li><strong>Extract once.</strong> MedGemma reads all 24 notes and its output is saved.</li>
+    <li><strong>Score five times.</strong> Every matching level runs against that same saved output, so the ladder costs no extra model time.</li>
+    <li><strong>Set the thresholds from the data.</strong> L3 and L4 cut-offs are chosen by inspecting the pairs each level newly accepts, not picked in advance.</li>
+    <li><strong>Adjudicate with L5</strong> where a level's judgement is contested, and report which level the headline figure came from.</li>
+  </ol>
+</section>
+
+<section>
   <h2>What is reported</h2>
   <table>
-    <tr><td class="k">Recall</td><td>headline. Of the billed codes, how many were found</td></tr>
-    <tr><td class="k">Precision, F1</td><td>secondary; false positives are watched, not ignored</td></tr>
+    <tr><td class="k">Recall</td><td>of the billed codes, how many were found</td></tr>
+    <tr><td class="k">False positives</td><td>count and rate: terms produced that matched nothing</td></tr>
     <tr><td class="k">Terms per note</td><td>the volume the recall was bought with</td></tr>
-    <tr><td class="k">Not-in-note rate</td><td>hallucination: terms produced that are not in the text</td></tr>
+    <tr><td class="k">Not-in-note rate</td><td>hallucination: terms that are not in the text at all</td></tr>
   </table>
-  <p>Every figure is given at every matching level.</p>
+  <p><strong>Broken out by source</strong>, so it is clear which of the three the model's wording actually lands on:</p>
+  <table>
+    <tr><th>Scored against</th><th class="c" style="text-align:center">Recall</th><th class="c" style="text-align:center">False pos.</th></tr>
+    <tr><td class="k">Evidence text</td><td class="c">•</td><td class="c">•</td></tr>
+    <tr><td class="k">Code description</td><td class="c">•</td><td class="c">•</td></tr>
+    <tr><td class="k">SNOMED terms</td><td class="c">•</td><td class="c">•</td></tr>
+    <tr><td class="k">All three combined</td><td class="c">•</td><td class="c">•</td></tr>
+  </table>
+  <p class="soft">A term matching only the catalogue wording is a hit against the description row and a false positive against the evidence-text row. Only the combined row's false positives matched nothing at all. SNOMED figures are against the synonyms the file carries.</p>
 </section>
 
 <div class="note">
   <h3>The number that makes recall meaningful</h3>
   <p>With loose matching and no volume control, a model that lists every phrase in the note scores near 1.00. Recall alone therefore cannot rank two models: a smaller, more verbose one would appear to beat a larger, more disciplined one.</p>
-  <p>So recall is always quoted <strong>with the terms-per-note it was bought with</strong>: “0.72 at 20 terms per note”, never a bare 0.72. That is what keeps the benchmark usable when a larger model is measured against it later.</p>
+  <p>So recall is always quoted <strong>with the terms-per-note it was bought with</strong>: “0.72 at 20 terms per note”, never a bare 0.72. That is what keeps the benchmark usable when a larger model is measured against it later, and it is why false positives are reported alongside.</p>
 </div>
 
 <section>
   <h2>What limits the number</h2>
-  <p><strong>SNOMED coverage in the file is partial.</strong> It carries 24,333 concept terms where the count field reports 270,287 in total, so roughly 9% are present, and procedure codes (CPT and ICD-10-PCS) carry none. Recall measured against that column is therefore a floor: some synonyms that would have matched are simply not there to match.</p>
-  <p><strong>Approximate matching can be wrong in both directions.</strong> <em>Acute</em> and <em>chronic renal failure</em> differ by one word and are clinical opposites; a negated mention reads as a positive one. That is what the deferred audit exists to check.</p>
-</section>
-
-<section>
-  <h2>Deferred: the LLM judge</h2>
-  <p>Recall rises at every level <em>by construction</em>, so L4 will always look best. The honest question is which level is still counting genuine matches, and the way to settle it is to have a model judge a sample of the pairs each level newly accepted.</p>
-  <p>It is slow and non-deterministic, so it is <strong>not run for now</strong>. It stays as the audit step, to be added when a particular level's number is challenged or when the result sits close to a decision.</p>
+  <p><strong>SNOMED coverage in the file is partial.</strong> It carries 24,333 concept terms where the count field reports 270,287 in total, so roughly 9% are present, and procedure codes (CPT and ICD-10-PCS) carry none. Recall against that source is therefore a floor: some synonyms that would have matched are not there to match.</p>
+  <p><strong>Approximate matching can be wrong in both directions.</strong> <em>Acute</em> and <em>chronic renal failure</em> differ by one word and are clinical opposites; a negated mention reads as a positive one. Recall rises at every level <em>by construction</em>, so L4 will always look best. L5 is what decides whether those extra matches are genuine.</p>
 </section>
 
 <section>
   <h2>Starting point</h2>
-  <p>Scored the strict way (exact matching against the note wording alone) MedGemma returned <strong>recall 0.53</strong> on an initial run, against the ≈0.5 Ehtesham Bhai observed independently. That is the floor this plan is designed to lift, and every change above widens what counts as correct without touching the model itself.</p>
+  <p>Scored the strict way, exact matching against the note wording alone, MedGemma returned <strong>recall 0.53</strong> on an initial run, against the ≈0.5 Ehtesham Bhai observed independently. That is the floor this plan is designed to lift, and every change above widens what counts as correct without touching the model itself.</p>
 </section>
 
 </div>

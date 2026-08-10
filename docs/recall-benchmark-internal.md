@@ -84,7 +84,7 @@ non-decreasing and the gain from each level is attributable.
 | L2 | whole-token containment, either direction | guard: `diabetes` ⊂ `diabetes insipidus` is a false match, and `sepsis` ⊂ `no evidence of sepsis` is a negation. Report L2's newly-matched pairs. |
 | L3 | token-set Dice and/or `difflib` ratio, thresholded | typos and word order |
 | L4 | biomedical sentence embeddings, cosine | the only level that reaches abbreviations |
-| L5 | LLM judge | deferred |
+| L5 | LLM judge | adjudication; he expects to need it |
 
 Measured on real pairs, which is why the ladder exists rather than one threshold:
 
@@ -138,16 +138,38 @@ cache automatically and cannot replay old results.
 
 ## Metrics
 
+Three additions after Ehtesham Bhai reviewed the plan: report false positives
+explicitly, expect to run L5, and break recall and FP out **per ground-truth
+source**.
+
 | | |
 |---|---|
-| recall | headline, per level, per row and per code |
-| precision, F1 | secondary. He asked for false positives to be watched |
+| recall | per level, per row and per code |
+| false positives | count and rate, first-class rather than implied by precision |
 | terms per note | the volume the recall was bought with |
 | not-in-note rate | hallucination |
 
 **Recall is never quoted bare.** With loose matching and no volume control, a model
 that lists every phrase scores near 1.00, so a bare figure cannot rank MedGemma
-against a larger model later — which is the entire purpose of the benchmark.
+against a larger model later, which is the entire purpose of the benchmark.
+
+### Per-source breakdown, and its one trap
+
+A 4-row table: evidence text, code description, SNOMED terms, and all three
+combined; recall and FP on each.
+
+Recall per source is unambiguous: of that source's entries, how many were matched.
+It answers a genuinely useful question, which is *whose wording the model produces*
+— note-style, catalogue-style, or SNOMED-style.
+
+**FP per source is easy to misread.** A prediction matching only the catalogue
+wording is a hit on the description row and an FP on the evidence-text row, because
+per-source FP means "matched nothing *in that source*". So every individual row's FP
+count will look high, and only the combined row counts predictions that matched
+nothing anywhere. That sentence is in his copy; keep it there.
+
+Denominators differ per source and must be printed: 99 distinct evidence phrases, 91
+descriptions, and SNOMED only where the file ships terms (53 of 100 rows).
 
 ## Reference numbers
 
@@ -167,9 +189,12 @@ Two implementations landing in the same place is a real cross-check. Keep it.
 
 1. Branch is created. Loader for `sample_100` (self-contained, no join).
 2. Accept-set construction from the three columns.
-3. Matching ladder L1–L4, thresholds configurable, newly-matched pairs dumped per level.
+3. Matching ladder L1-L4, thresholds configurable, newly-matched pairs dumped per level.
 4. Prompt rewrite, two fields.
-5. Report: recall per level, with the three companion numbers.
+5. Report: recall and FP per level, and the per-source breakdown.
 6. Run: 82 chunks.
+7. L5 adjudication over the pairs L2-L4 newly accepted.
 
-L5 is built only if a level's number is challenged or the result lands near a decision.
+L5 is now a planned step rather than a contingency: he expects the assessment to need
+it. Build it after L1-L4 are producing numbers, and run it on the pairs each level
+newly accepted rather than on everything, so the cost stays bounded.
