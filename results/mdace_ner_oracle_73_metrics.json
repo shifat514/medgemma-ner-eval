@@ -7,6 +7,7 @@
     "model_id": "google/medgemma-4b-it",
     "model_name": "medgemma-4b-it-ORACLE",
     "n_cap_hits": 0,
+    "n_chunks": 202,
     "n_mixed_chart_type": 13,
     "n_notes_scored": 73,
     "notes_missing": [],
@@ -56,6 +57,45 @@
         "tp": 0
       },
       "title": "The 100-row sample cut (24 notes), scored as originally asked"
+    },
+    "A2": {
+      "detail": "answer key = the note wording carried by the 100-row cut",
+      "metrics": {
+        "code_recall": 1.0,
+        "code_recall_ci": [
+          0.9795487261607652,
+          1.0
+        ],
+        "codes_covered": 184,
+        "codes_total": 184,
+        "extraction_ratio": 1.9696969696969697,
+        "f1": 0.673469387755102,
+        "fn": 0,
+        "fp": 96,
+        "fp_buckets": {
+          "billed_elsewhere": 96,
+          "in_note_unbilled": 0,
+          "not_in_note": 0
+        },
+        "gold_per_note": 4.125,
+        "n_gold": 99,
+        "n_notes": 24,
+        "n_pred": 195,
+        "precision": 0.5076923076923077,
+        "precision_ceiling": 0.5076923076923077,
+        "precision_ci": [
+          0.43805373614583215,
+          0.5770336499946936
+        ],
+        "pred_per_note": 8.125,
+        "recall": 1.0,
+        "recall_ci": [
+          0.9626454664260378,
+          1.0
+        ],
+        "tp": 99
+      },
+      "title": "The same 24 notes, scored on the phrases that file ships"
     },
     "B1": {
       "detail": "answer key = every evidence phrase those notes carry",

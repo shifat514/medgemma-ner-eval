@@ -146,7 +146,14 @@ def build_report(views, run_meta):
         f"4-bit, greedy decoding, `max_new_tokens={run_meta['max_new_tokens']}`.\n"
         f"Chunking {run_meta['chunk_words']} words / {run_meta['overlap_words']} "
         f"overlap. Seed {run_meta['seed']}. "
-        f"{run_meta['n_notes_scored']} notes scored."
+        f"{run_meta['n_notes_scored']} notes scored.\n"
+        # Provenance, so a shared report can always be traced back to the exact
+        # configuration that produced it. The prompt hash matters most: results
+        # are cached per run directory, and without seeing this in the report
+        # there is no way to tell a fresh run from a replay of an older prompt's
+        # numbers by looking at the artifact alone.
+        f"Prompt `{run_meta.get('prompt_id', 'unknown')}`, "
+        f"run `{os.path.basename(run_meta.get('run_dir', '') or 'unknown')}`."
         + ("\n\n**ORACLE RUN — no model involved.** Gold terms were fed back "
            "through the pipeline to check the harness. Recall below must read "
            "1.0000; anything less is a bug in chunking, normalization or "
