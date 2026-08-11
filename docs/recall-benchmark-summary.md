@@ -21,13 +21,16 @@ a changed yardstick.
 
 ## What each matching level bought
 
-| level | rule | found | gain |
-|---|---|---|---|
-| L1 | identical text after normalisation | 57 | — |
-| **L2** | **whole-token containment, either direction** | **74** | **+17** |
-| L3 | token-set Dice / difflib, thresholded | 75 | +1 |
-| L4 | biomedical embedding cosine | 79 | +4 |
-| L5 | LLM judge deletes wrong matches | **78** | −1 |
+Each level is a looser rule for "did the model find this phrase". Every level
+includes the one above it.
+
+| level | rule | example it catches | found | gain |
+|---|---|---|---|---|
+| L1 | text must match exactly (lowercased, punctuation stripped) | `sepsis` = `sepsis` | 57 | — |
+| **L2** | **one phrase contains the other, whole words** | `back pain` in `chronic back pain` | **74** | **+17** |
+| L3 | fuzzy — typos and reordered words (Dice / difflib) | `hyperlipidema` ≈ `hyperlipidemia` | 75 | +1 |
+| L4 | means the same thing (biomedical embeddings) | `CHF` ≈ `congestive heart failure` | 79 | +4 |
+| L5 | an LLM reviews every loose match and deletes the wrong ones | rejects `diabetes` ≠ `diabetes insipidus` | **78** | −1 |
 
 **L2 did almost all the work.** Most L1 misses were the model writing a shorter
 or longer form of the same phrase — `back pain` for `chronic back pain`.
@@ -108,6 +111,53 @@ not-in-the-note rate**, because it does not depend on what was billed at all.
 - **L5's judge was MedGemma itself.** It rejected a third of its own matcher's
   work — not how a self-serving judge fails — but an independent judge would be
   stronger evidence.
+
+## Verdict — a good extractor, a poor filter
+
+**What works:**
+
+- Finds **78%** of billed evidence, and only **4.6%** of its output is invented —
+  low for a 4B model.
+- **It knows the vocabulary.** It expands `HTN` → hypertension, `CABG` →
+  coronary artery bypass graft, `BRBPR` → bright red blood per rectum. That is
+  why the catalogue column went from 1% to 65%.
+- **Format compliance is solid.** Zero JSON parse failures in 82 calls, and both
+  fields populated on all 1,706 emitted items.
+
+**What does not work:**
+
+- **12:1 over-extraction.** It cannot tell a billable finding from any medical
+  phrase. It extracted vital signs, blood products and bowel preps until the
+  prompt named each one explicitly — and a second prompt built on a positive
+  criterion instead of a blacklist did not fix the volume either.
+- **Repetition loops.** 413 of 1,706 emitted items (24%) were duplicates *inside
+  a single reply*. This caused most of the 21 truncated chunks.
+- **No self-limiting.** It ran out of output budget on 26% of calls.
+
+It sees what is in the note. It has no idea what is billable.
+
+## Is it worth fine-tuning for the billing pipeline?
+
+**Yes — and the volume problem is precisely what fine-tuning is for.**
+
+The model already demonstrates the two hard parts: it locates findings in free
+text, and it names them in standard clinical vocabulary. What it lacks is
+billing-scope judgment, and that is exactly what the 9,499 labelled MDACE rows
+encode. Prompt engineering could not teach it — that was attempted twice — but
+supervised examples plausibly can.
+
+Two things to be clear about:
+
+- **This benchmark does not test code assignment.** It tests whether the
+  *evidence* is found. Code recall of **77% (70 of 91)** is the ceiling on the
+  downstream term → ICD lookup, since you cannot retrieve a code whose evidence
+  was never extracted. Whether MedGemma picks the *right* ICD code is untested.
+- **SNOMED is its weakest column** — 47% against 76% on note wording. If SNOMED
+  mapping is a goal, that is where the gap sits.
+
+Suggested order: exhaust the five items below first, since they are hours rather
+than days. Then fine-tune on the full 1,074-note corpus with **volume**, not
+recall, as the target metric.
 
 ## Before fine-tuning — what is still untried
 
