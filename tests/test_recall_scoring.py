@@ -321,3 +321,46 @@ def test_committed_metrics_carry_no_absolute_paths(tmp_path):
 
     assert [s for s in strings(written) if s.startswith("/")] == []
     assert written["run"]["input_file"] == "sample.jsonl"
+
+
+# --------------------------------------------------------------------------
+# Diagnostics that have to distinguish a repetition loop from window overlap
+# --------------------------------------------------------------------------
+
+def test_repeats_within_one_reply_are_counted_separately_from_overlap():
+    """A looping model and an overlapping window look identical after pooling.
+
+    Repeats ACROSS a note's chunks are expected — windows overlap by design — so
+    only the within-reply count is evidence of a repetition loop, which is the
+    thing that decides whether the fix is the prompt or the chunk size.
+    """
+    from src.evaluate_recall import predict_note
+
+    reply = json.dumps({"findings": [
+        {"span": "sepsis", "name": "sepsis"},
+        {"span": "Sepsis.", "name": "sepsis"},      # same finding, said twice
+        {"span": "HTN", "name": "hypertension"},
+    ]})
+    record = {"note_id": 1, "text": "sepsis and HTN", "rows": [], "forms": {}}
+    _findings, st = predict_note(
+        None, record, run_fn=lambda p, c: reply, count_fn=lambda p, r: None)
+
+    assert st["n_items_dup_in_chunk"] == 1
+    assert st["n_findings"] == 2
+
+
+def test_a_truncated_chunk_that_parsed_cleanly_is_still_flagged_as_lost():
+    """The object format recovers the prefix, so `shape` stays "json" and the
+    salvage counter never fires — which made the diagnostics read as though a
+    cut-off chunk was fine. Everything past the cut is still gone."""
+    from src.evaluate_recall import predict_note
+
+    reply = '{"findings": [{"span": "sepsis", "name": "sepsis"}, {"span": "acute kid'
+    record = {"note_id": 1, "text": "sepsis", "rows": [], "forms": {}}
+    _findings, st = predict_note(
+        None, record, run_fn=lambda p, c: reply,
+        count_fn=lambda p, r: 1024, gen_config={"max_new_tokens": 1024})
+
+    assert st["n_cap_hits"] == 1
+    assert st["n_chunks_salvaged"] == 0        # nothing needed salvaging
+    assert st["n_chunks_cut_but_parsed"] == 1  # ...but content was still lost

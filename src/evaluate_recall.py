@@ -44,7 +44,7 @@ import json
 import os
 
 from .chunking import chunk_windows, tokenize_with_spans
-from .datasets.mdace_recall import load
+from .datasets.mdace_recall import load, normalize_term
 from .prompt_recall import build_messages, parse_findings_diag, prompt_fingerprint
 from .recall_config import (
     CAP_MARGIN,
@@ -155,6 +155,19 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
         "n_chunks_zero_findings": 0, "n_mentions": 0,
         "n_chunks_salvaged": 0, "n_items_salvaged": 0,
         "n_span_only": 0, "n_name_only": 0, "n_bare_string": 0,
+        # Repeats WITHIN one reply, which is the repetition-loop signal. Repeats
+        # ACROSS a note's chunks are expected — windows overlap by design — so
+        # the pooled duplicate rate cannot tell the two apart and a run that is
+        # looping looks the same as one that is merely overlapping. Both are
+        # counts, so neither leaves the diagnostics PHI-free.
+        "n_items_dup_in_chunk": 0,
+        # Chunks cut off at the token cap that still parsed cleanly. The object
+        # format degrades gracefully — the scanner recovers the complete
+        # {"span":..,"name":..} objects written before the cut — so `shape`
+        # stays "json" and n_chunks_salvaged never fires. Without this counter
+        # the diagnostics read as though nothing was lost, when in fact
+        # everything after each cut is gone.
+        "n_chunks_cut_but_parsed": 0,
     }
 
     collected = []
@@ -191,6 +204,12 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
             st["n_chunks_empty_list"] += 1
         if not parsed:
             st["n_chunks_zero_findings"] += 1
+
+        # Did this one reply say the same thing twice? Counted per chunk, before
+        # the note-level pool, so window overlap cannot be mistaken for a loop.
+        seen_here = {(normalize_term(f.get("span")), normalize_term(f.get("name")))
+                     for f in parsed}
+        st["n_items_dup_in_chunk"] += len(parsed) - len(seen_here)
         if diag_sink is not None:
             diag_sink["shapes"][pdiag["shape"]] = \
                 diag_sink["shapes"].get(pdiag["shape"], 0) + 1
@@ -207,6 +226,8 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
             n_gen = count_fn(pipe, reply)
             if n_gen is not None and n_gen >= cap - CAP_MARGIN:
                 st["n_cap_hits"] += 1
+                if parsed and not pdiag.get("n_salvaged"):
+                    st["n_chunks_cut_but_parsed"] += 1
 
         st["n_mentions"] += len(parsed)
         collected.extend(parsed)
@@ -269,13 +290,19 @@ def _print_diagnostics(per_note, diag_sink):
     print(f"    returned an explicitly empty list {tot('n_chunks_empty_list'):,}")
     print(f"    yielded zero findings             {tot('n_chunks_zero_findings'):,}"
           f"  ({100.0 * tot('n_chunks_zero_findings') / chunks:.1f}%)")
-    print(f"    generation hit max_new_tokens     {tot('n_cap_hits'):,}"
-          "   <- non-zero means recall is understated")
+    caps = tot("n_cap_hits")
+    print(f"    generation hit max_new_tokens     {caps:,}"
+          f"  ({100.0 * caps / chunks:.1f}%)"
+          + ("   <- recall is UNDERSTATED" if caps else ""))
+    print(f"      of those, parsed cleanly anyway {tot('n_chunks_cut_but_parsed'):,}"
+          + ("   <- everything past each cut is still lost" if caps else ""))
     print(f"    inference/parse exception         {tot('n_chunk_failures'):,}")
-    print(f"    truncated, prefix salvaged        {tot('n_chunks_salvaged'):,}"
+    print(f"    nothing parsed, prefix salvaged   {tot('n_chunks_salvaged'):,}"
           f"  ({tot('n_items_salvaged'):,} findings recovered)")
     print(f"  JSON items emitted                  {tot('n_items_seen'):,}")
     print(f"    dropped: no usable text           {tot('n_items_no_text'):,}")
+    print(f"    repeated within their own reply   {tot('n_items_dup_in_chunk'):,}"
+          "   <- repetition loop, not window overlap")
     print(f"    span but no standard name         {tot('n_span_only'):,}")
     print(f"    standard name but no span         {tot('n_name_only'):,}"
           "   <- these cannot be checked against the note")
