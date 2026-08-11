@@ -275,6 +275,13 @@ def _load_findings(path):
     return out
 
 
+# Counters added after the first smoke run. A note cached before they existed
+# has no value for them, and summing a missing key as 0 would report "no
+# repetition" for a run that was never measured for it — the same shape of lie
+# as a stale prompt replaying old numbers.
+_LATE_COUNTERS = ("n_items_dup_in_chunk", "n_chunks_cut_but_parsed")
+
+
 def _print_diagnostics(per_note, diag_sink):
     """Explain under-extraction instead of leaving a silent zero."""
     def tot(key):
@@ -283,7 +290,14 @@ def _print_diagnostics(per_note, diag_sink):
     chunks = tot("n_chunks")
     if not chunks:
         return
+    stale = sum(1 for r in per_note
+                if any(k not in r for k in _LATE_COUNTERS))
     print("\n--- extraction diagnostics " + "-" * 40)
+    if stale:
+        print(f"  [warn] {stale} of {len(per_note)} notes were cached before the "
+              "repetition and\n         truncation counters existed and report 0 "
+              "for them regardless of\n         what actually happened. Re-run "
+              "those notes with --no-resume to measure.")
     print(f"  chunks                              {chunks:,}")
     print(f"    returned no usable JSON           {tot('n_chunks_no_json'):,}"
           f"  ({100.0 * tot('n_chunks_no_json') / chunks:.1f}%)")
