@@ -384,6 +384,11 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
         label = str(len(records))
     if oracle:
         label = f"oracle_{label}"
+    # The prompt variant is part of the label, not just the run directory.
+    # Without it both arms of an A/B write the same results/ filename and the
+    # second silently overwrites the first -- which then makes the comparison
+    # tool pick up whatever unrelated run happens to be next-most-recent.
+    label = f"{label}_{prompt_variant or DEFAULT_VARIANT}"
 
     tag = run_tag(chunk_words, overlap_words, model_name, cap,
                   prompt_id=prompt_fingerprint(prompt_variant))

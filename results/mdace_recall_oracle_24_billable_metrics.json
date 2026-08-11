@@ -552,7 +552,7 @@
   "run": {
     "chunk_words": 400,
     "input_file": "8-07-mdace-ner-eval_sample_100-LOCAL.jsonl",
-    "label": "oracle_24",
+    "label": "oracle_24_billable",
     "levels": [
       "L1",
       "L2",
@@ -570,9 +570,9 @@
     "notes_missing": [],
     "oracle": true,
     "overlap_words": 80,
-    "prompt_id": "5046b887",
-    "prompt_variant": "scoped",
-    "run_tag": "medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_p5046b887",
+    "prompt_id": "1d16939a",
+    "prompt_variant": "billable",
+    "run_tag": "medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_p1d16939a",
     "thresholds": {
       "cosine_min": 0.6,
       "dice_min": 0.8,

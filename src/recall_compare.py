@@ -99,8 +99,26 @@ def render(rows):
     if not rows:
         return "No runs to compare.\n"
     top = rows[0]["top"]
+
+    # Two runs over different notes are not a comparison, and the shape of that
+    # mistake is easy to miss: an oracle run sitting next to a smoke run reads
+    # as a spectacular win for the smoke run. Say so loudly rather than render a
+    # table that looks legitimate.
+    warnings = []
+    if len({r["notes"] for r in rows}) > 1:
+        warnings.append(
+            "**These runs cover different notes** ("
+            + ", ".join(f"{r['prompt']}: {r['notes']}" for r in rows)
+            + "). They are not comparable -- re-run them over the same notes.")
+    if len({r["prompt"] for r in rows}) < len(rows):
+        warnings.append("**Two runs of the same prompt variant** are being "
+                        "compared, which measures nothing.")
+    if any(r["label"].startswith("oracle") for r in rows):
+        warnings.append("**One of these is an ORACLE run** -- gold fed back "
+                        "through the pipeline, not a model result.")
     out = [
         "# Prompt variant comparison\n",
+        *(f"> ⚠️ {w}\n" for w in warnings),
         ("**Read the volume block before the recall block.** A prompt that "
          "extracts more scores higher recall almost regardless of quality, so a "
          "variant winning on recall while emitting twice the findings has not "

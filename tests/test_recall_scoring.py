@@ -307,7 +307,7 @@ def test_committed_metrics_carry_no_absolute_paths(tmp_path):
              output_dir=str(tmp_path / "out"), embed=False)
 
     written = json.loads((tmp_path / "results" /
-                          "mdace_recall_oracle_1_metrics.json").read_text())
+                          "mdace_recall_oracle_1_scoped_metrics.json").read_text())
 
     def strings(obj):
         if isinstance(obj, dict):
@@ -392,3 +392,44 @@ def test_a_cut_during_a_replay_is_not_counted_as_lost_content():
                           gen_config={"max_new_tokens": 1024})
     assert st["n_cap_hits"] == 1
     assert st["n_cap_hits_while_repeating"] == 0
+
+
+def test_each_prompt_variant_gets_its_own_results_filename(tmp_path):
+    """Both arms of an A/B wrote the same file, and the second silently
+    overwrote the first -- which then made the comparison tool pick up whatever
+    unrelated run happened to be next-most-recent. An oracle run, as it turned
+    out, which reads as a spectacular win for whichever arm survived."""
+    from src.evaluate_recall import run_eval
+
+    _notes(tmp_path, [_row()])
+    results = tmp_path / "results"
+    for variant in ("scoped", "billable"):
+        run_eval(sample_file=str(tmp_path / "sample.jsonl"), oracle=True,
+                 results_dir=str(results), output_dir=str(tmp_path / "out"),
+                 embed=False, prompt_variant=variant)
+
+    written = sorted(p.name for p in results.glob("*_metrics.json"))
+    assert written == ["mdace_recall_oracle_1_billable_metrics.json",
+                       "mdace_recall_oracle_1_scoped_metrics.json"]
+
+
+def test_comparing_runs_over_different_notes_is_flagged_not_rendered_quietly():
+    from src.recall_compare import render
+
+    def _row_for(prompt, notes, label="smoke_2"):
+        return {"label": label, "prompt": prompt, "hash": "abc", "notes": notes,
+                "chunks": notes * 8, "per_note": 90.0, "not_in_note": 0.01,
+                "cap_hits": 5, "cap_looping": 3, "dup_in_chunk": 100,
+                "row_recall_l1": 0.8, "row_recall_top": 1.0,
+                "code_recall_top": 1.0, "fp_top": 100, "fp_rate_top": 0.9,
+                "top": "L4"}
+
+    mismatched = render([_row_for("billable", 2), _row_for("scoped", 24)])
+    assert "different notes" in mismatched
+
+    with_oracle = render([_row_for("billable", 2),
+                          _row_for("scoped", 2, label="oracle_24")])
+    assert "ORACLE run" in with_oracle
+
+    clean = render([_row_for("billable", 2), _row_for("scoped", 2)])
+    assert "⚠️" not in clean
