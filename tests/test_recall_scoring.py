@@ -452,3 +452,62 @@ def test_chunk_geometry_also_gets_its_own_results_filename(tmp_path):
     assert len(written) == 2, written
     assert any("cw400" in name for name in written)
     assert any("cw250" in name for name in written)
+
+
+# --------------------------------------------------------------------------
+# L5 adjudication feeding back into the ladder
+# --------------------------------------------------------------------------
+
+def test_a_rejected_pair_is_removed_as_an_edge_not_as_a_finished_match(tmp_path):
+    """The judge rules that `back pain` is not `chronic back pain`. The finding
+    must then be free to match something else, which deleting the assignment
+    instead of the edge would prevent."""
+    records, _ = _notes(tmp_path, [
+        _row(code="A1", evidence="chronic back pain", descr="Dorsalgia",
+             text="chronic back pain and sepsis"),
+        _row(code="A2", evidence="sepsis", descr="Sepsis, unspecified",
+             text="chronic back pain and sepsis"),
+    ])
+    preds = _preds(1, [{"span": "back pain", "name": "sepsis"}])
+
+    raw = score_run(records, preds, levels=LEVELS)["by_source"]["combined"]
+    assert raw["L1"]["rows_matched"] == 1        # exact on "sepsis"
+
+    rejected = {(1, "back pain", "sepsis", "chronic back pain")}
+    adj = score_run(records, preds, levels=LEVELS,
+                    rejected=rejected)["by_source"]["combined"]
+    assert adj["L2"]["rows_matched"] <= raw["L2"]["rows_matched"]
+    assert adj["L1"]["rows_matched"] == 1        # the exact match is untouched
+
+
+def test_rejecting_a_pair_demotes_a_row_only_if_it_had_no_other_support(tmp_path):
+    """Rows fall by less than pairs do, which is why both get quoted."""
+    records, _ = _notes(tmp_path, [
+        _row(evidence="chronic back pain", descr="Dorsalgia, unspecified",
+             text="chronic back pain noted")])
+    preds = _preds(1, [{"span": "back pain", "name": "back pain"}])
+
+    raw = score_run(records, preds, levels=LEVELS)["by_source"]["combined"]
+    assert raw["L2"]["rows_matched"] == 1
+
+    rejected = {(1, "back pain", "back pain", "chronic back pain")}
+    adj = score_run(records, preds, levels=LEVELS,
+                    rejected=rejected)["by_source"]["combined"]
+    assert adj["L2"]["rows_matched"] == 0        # that was its only support
+
+
+def test_unreadable_verdicts_are_not_treated_as_rejections(tmp_path):
+    """A judge that failed to answer is not evidence a match was wrong."""
+    from src.recall_judge import load_rejected
+
+    (tmp_path / "verdicts_L4.jsonl").write_text("\n".join([
+        json.dumps({"note_id": 1, "span": "a", "name": "a",
+                    "gold_form": "x", "verdict": False}),
+        json.dumps({"note_id": 1, "span": "b", "name": "b",
+                    "gold_form": "y", "verdict": None}),
+        json.dumps({"note_id": 1, "span": "c", "name": "c",
+                    "gold_form": "z", "verdict": True}),
+    ]), encoding="utf-8")
+
+    rejected = load_rejected(str(tmp_path))
+    assert rejected == {(1, "a", "a", "x")}

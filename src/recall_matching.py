@@ -306,7 +306,7 @@ def assign(edges, free_findings, free_forms):
 
 
 def build_edges(findings, gold_forms, embedder=None, dice_min=DICE_MIN,
-                ratio_min=RATIO_MIN, cosine_min=COSINE_MIN):
+                ratio_min=RATIO_MIN, cosine_min=COSINE_MIN, blocked=None):
     """Every admissible ``(rule, score, finding_index, form)`` edge.
 
     `findings` is a list of candidate-string tuples: one finding contributes its
@@ -314,8 +314,11 @@ def build_edges(findings, gold_forms, embedder=None, dice_min=DICE_MIN,
     two-field prompt. A pair reachable by several rules keeps only the strictest.
     """
     edges, placed = [], set()
+    blocked = blocked or set()
     for i, cands in enumerate(findings):
         for form in gold_forms:
+            if (i, form) in blocked:
+                continue
             best = None
             for cand in cands:
                 got = string_rule(cand, form, dice_min, ratio_min)
@@ -333,7 +336,7 @@ def build_edges(findings, gold_forms, embedder=None, dice_min=DICE_MIN,
         sims = embedder.similarity(flat, sorted(gold_forms))
         for i, cands in enumerate(findings):
             for form in gold_forms:
-                if (i, form) in placed:
+                if (i, form) in placed or (i, form) in blocked:
                     continue
                 score = max((sims.get((c, form), 0.0) for c in cands),
                             default=0.0)
@@ -343,7 +346,8 @@ def build_edges(findings, gold_forms, embedder=None, dice_min=DICE_MIN,
 
 
 def match(findings, gold_forms, embedder=None, dice_min=DICE_MIN,
-          ratio_min=RATIO_MIN, cosine_min=COSINE_MIN, levels=LEVELS):
+          ratio_min=RATIO_MIN, cosine_min=COSINE_MIN, levels=LEVELS,
+          blocked=None):
     """Run the ladder for one note against one gold form set.
 
     Returns ``{level: {"pairs": {finding_index: (form, rule, score)},
@@ -355,7 +359,7 @@ def match(findings, gold_forms, embedder=None, dice_min=DICE_MIN,
                 for cands in findings]
     gold_forms = sorted(gold_forms)
     edges = build_edges(findings, gold_forms, embedder, dice_min, ratio_min,
-                        cosine_min)
+                        cosine_min, blocked=blocked)
 
     results, pairs, matched_forms = {}, {}, set()
     for level in levels:

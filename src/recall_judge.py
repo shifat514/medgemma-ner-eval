@@ -325,3 +325,31 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def load_rejected(run_dir, levels=("L2", "L3", "L4")):
+    """``{(note_id, span, name, gold_form)}`` the judge ruled NOT the same finding.
+
+    Only explicit rejections. A verdict of None means the judge could not be
+    read, and an unreadable verdict is not evidence that a match was wrong --
+    dropping those would understate recall for a reason with nothing to do with
+    the model under test.
+    """
+    rejected = set()
+    for path in glob.glob(os.path.join(run_dir, "verdicts_*.jsonl")):
+        level = os.path.basename(path)[len("verdicts_"):-len(".jsonl")]
+        if level not in levels:
+            continue
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("verdict") is False:
+                    rejected.add((rec.get("note_id"), rec.get("span", ""),
+                                  rec.get("name", ""), rec.get("gold_form", "")))
+    return rejected

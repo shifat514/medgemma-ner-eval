@@ -508,6 +508,23 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
                        ratio_min=ratio_min, cosine_min=cosine_min,
                        levels=levels)
 
+    # If L5 has run over this run directory, score a second ladder with the
+    # rejected pairs removed. Reported ALONGSIDE the unadjudicated figure, never
+    # in place of it: the gap between them is how much of the ladder's gain was
+    # real, and that gap is the point of having a ladder at all.
+    from .recall_judge import load_rejected
+
+    rejected = load_rejected(run_dir)
+    adjudicated = None
+    if rejected:
+        print(f"[info] L5 verdicts found: {len(rejected)} pairs rejected. "
+              "Scoring an adjudicated ladder alongside.")
+        adjudicated = score_run(records, preds, embedder=embedder,
+                                dice_min=dice_min, ratio_min=ratio_min,
+                                cosine_min=cosine_min, levels=levels,
+                                rejected=rejected)
+        result["adjudicated"] = adjudicated["by_source"]
+
     for level, pairs in result["new_pairs"].items():
         path = os.path.join(run_dir, f"new_pairs_{level}.jsonl")
         with open(path, "w", encoding="utf-8") as f:
@@ -540,6 +557,7 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
                        "embed_model": embedder.name if embedder else None},
         "n_chunks": sum(r.get("n_chunks", 0) or 0 for r in per_note_stats),
         "n_cap_hits": sum(r.get("n_cap_hits", 0) or 0 for r in per_note_stats),
+        "n_rejected_pairs": len(rejected),
         "n_chunks_salvaged": sum(
             r.get("n_chunks_salvaged", 0) or 0 for r in per_note_stats),
     }
@@ -547,6 +565,8 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
                                           results_dir=results_dir, label=label)
 
     _print_summary(result, run_meta)
+    if adjudicated:
+        _print_adjudicated(result, adjudicated)
     print(f"\nWrote {report_path}")
     print(f"Wrote {json_path}")
     print(f"Per-note counts (gitignored, no note text): {per_note_path}")
@@ -579,6 +599,20 @@ def _print_summary(result, run_meta):
           "   <- hallucination")
     print("\n  Recall is not quotable on its own: a model that lists every "
           "phrase\n  scores near 1.00. Quote it with the two lines above it.")
+
+
+def _print_adjudicated(result, adjudicated):
+    """The ladder with judge-rejected pairs removed, beside the raw one."""
+    print("\n--- after L5 adjudication " + "-" * 41)
+    print(f"  {'level':6} {'rows raw':>10} {'rows judged':>12} {'lost':>6}")
+    for level in result["levels"]:
+        raw = result["by_source"]["combined"][level]
+        adj = adjudicated["by_source"]["combined"][level]
+        print(f"  {level:6} {raw['row_recall']:10.4f} {adj['row_recall']:12.4f} "
+              f"{raw['rows_matched'] - adj['rows_matched']:6}")
+    print("\n  A rejected pair only demotes a row that had no other accepted")
+    print("  form, so rows fall by less than pairs do. Quote both.")
+    print("-" * 67)
 
 
 def _check_oracle(result, run_meta):

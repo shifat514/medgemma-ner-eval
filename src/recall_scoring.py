@@ -95,7 +95,8 @@ def not_in_note(findings, note_text):
 
 
 def match_notes(records, preds, source=None, embedder=None, dice_min=DICE_MIN,
-                ratio_min=RATIO_MIN, cosine_min=COSINE_MIN, levels=LEVELS):
+                ratio_min=RATIO_MIN, cosine_min=COSINE_MIN, levels=LEVELS,
+                rejected=None):
     """Run the ladder on every scored note. Returns ``{note_id: ladder}``.
 
     `preds` maps note_id to a list of deduped findings.
@@ -105,10 +106,22 @@ def match_notes(records, preds, source=None, embedder=None, dice_min=DICE_MIN,
         findings = preds.get(record["note_id"])
         if findings is None:
             continue
+        # A rejected pair is removed as an EDGE, not as a finished match, so
+        # the matcher can re-solve: a finding whose pairing the judge threw out
+        # may legitimately match a different form, and deleting the assignment
+        # instead of the edge would lose that.
+        blocked = None
+        if rejected:
+            blocked = {
+                (i, form)
+                for i, f in enumerate(findings)
+                for form in source_forms(record, source)
+                if (record["note_id"], f["span"], f["name"], form) in rejected
+            }
         out[record["note_id"]] = match(
             [f["cands"] for f in findings], source_forms(record, source),
             embedder=embedder, dice_min=dice_min, ratio_min=ratio_min,
-            cosine_min=cosine_min, levels=levels,
+            cosine_min=cosine_min, levels=levels, blocked=blocked,
         )
     return out
 
@@ -231,7 +244,8 @@ def volume(records, preds):
 
 
 def score_run(records, preds, embedder=None, dice_min=DICE_MIN,
-              ratio_min=RATIO_MIN, cosine_min=COSINE_MIN, levels=LEVELS):
+              ratio_min=RATIO_MIN, cosine_min=COSINE_MIN, levels=LEVELS,
+              rejected=None):
     """The whole benchmark result.
 
     Each source is scored by its OWN independent matching, which is what makes
@@ -247,7 +261,8 @@ def score_run(records, preds, embedder=None, dice_min=DICE_MIN,
         key = None if source == COMBINED else source
         ladders = match_notes(records, preds, source=key, embedder=embedder,
                               dice_min=dice_min, ratio_min=ratio_min,
-                              cosine_min=cosine_min, levels=levels)
+                              cosine_min=cosine_min, levels=levels,
+                              rejected=rejected)
         by_source[source] = score_source(records, preds, ladders, source=key,
                                          levels=levels)
         if source == COMBINED:
