@@ -611,7 +611,7 @@ def _print_summary(result, run_meta):
     print("\n--- the three ways gold spells each answer " + "-" * 24)
     print(f"  {'gold column':34} {'answers':>8} "
           + " ".join(f"{lv:>8}" for lv in result["levels"]))
-    labels = {"combined": "any of the three  <- headline",
+    labels = {"combined": "any of the three (ignore - see below)",
               "evidence": "what the note says",
               "description": "the official billing name",
               "snomed": "the medical dictionary name"}
@@ -622,6 +622,8 @@ def _print_summary(result, run_meta):
                          for lv in result["levels"])
         print(f"  {labels[source]:34} {total:>8} {cells}")
     print("  Each row: of that column's phrasings, how many the model produced.")
+    print("  Top row is NOT a score: it counts all 318 phrasings, but a gold")
+    print("  answer only needs ONE of its ~4 to count as found.")
 
     m = result["by_source"]["combined"][top]
     buckets = m.get("fp_buckets") or {}
