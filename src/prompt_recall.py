@@ -200,13 +200,18 @@ _EXAMPLE_INPUT = (
     "HTN and type 2 diabetes who presented with chest pain. He underwent "
     "cardiac catheterization on [**2145-6-7**]. He sustained a fall at home "
     "with a fracture of the left wrist. Tobacco history: quit smoking 20 years "
-    "ago. Continued on aspirin 81mg daily for secondary prevention."
+    "ago. Continued on aspirin 81mg daily for secondary prevention. His SBPs "
+    "ran 90-110 and his hematocrit was 24."
 )
 
-# "aspirin 81mg daily" and the tobacco line appear in the example input and are
-# deliberately absent from this output. A negative example is the strongest
-# available signal that medication lists are out of scope, after a version that
-# merely omitted the category still drew 33% medication items.
+# Five things in the example input are deliberately absent from this output:
+# "aspirin 81mg daily", the tobacco history, "SBPs" and "hematocrit". A negative
+# example is the strongest available signal that a category is out of scope — a
+# version that merely omitted medications still drew 33% medication items — and
+# the first smoke run showed the same leak for the rest: it extracted `SBPs` as
+# "systolic blood pressure", `pRBCs` as "packed red blood cells" and the bowel
+# prep `GoLYTEly`, all of which rules 1 and 2 already forbade in the abstract.
+# Abstract prohibitions do not work on a 4B model; demonstrated ones do.
 _EXAMPLE_OUTPUT = json.dumps({"findings": [
     {"span": "HTN", "name": "hypertension"},
     {"span": "type 2 diabetes", "name": "type 2 diabetes mellitus"},
@@ -239,21 +244,30 @@ _INSTRUCTION = (
     "span is \"HTN\" and the name is \"hypertension\".\n"
     "   If the phrase in the text is already the standard name, repeat it in "
     "both fields.\n"
-    "1. Do NOT extract medications, drug names, doses, or IV fluids. A "
-    "medication list is not a finding. If the note says \"Continued on aspirin "
-    "81mg daily\", extract nothing from it.\n"
-    "2. Do NOT extract social history, family history, vital signs, lab "
-    "values, or allergies.\n"
-    "3. Keep the span SHORT — the specific words naming the finding, not the "
+    "1. Do NOT extract medications, drug names, doses, IV fluids, bowel "
+    "preparations, or blood products. A medication list is not a finding. If "
+    "the note says \"Continued on aspirin 81mg daily\", extract nothing from "
+    "it. GoLYTELY and pRBCs are substances given to the patient, not "
+    "findings.\n"
+    "2. Do NOT extract vital signs or lab values. SBP, blood pressure, heart "
+    "rate, temperature, hematocrit, creatinine and white count are measurements, "
+    "not findings. Extract the diagnosis they support only if the note names it "
+    "— extract \"anemia\" if the note says anemia, but never \"hematocrit\".\n"
+    "3. Do NOT extract social history, family history, or allergies.\n"
+    "4. Do NOT extract a body part or a location on its own. \"right kidney\" "
+    "is not a finding; \"right renal mass\" is.\n"
+    "5. Keep the span SHORT — the specific words naming the finding, not the "
     "whole sentence around it. Most spans are one to three words.\n"
-    "4. Text in square brackets like [**Known lastname 1234**] or "
+    "6. Text in square brackets like [**Known lastname 1234**] or "
     "[**2145-6-7**] is removed patient information. Never extract it and never "
     "include it inside a span.\n"
-    "5. Extract from the WHOLE text, including narrative prose and past "
+    "7. Extract from the WHOLE text, including narrative prose and past "
     "medical history, not only from headed lists.\n"
-    "6. ONE entry per distinct finding. Do not repeat a finding you have "
+    "8. ONE entry per distinct finding. Do not repeat a finding you have "
     "already listed, even if the text mentions it again.\n"
-    "7. Return ONLY the JSON object — no prose, no markdown fences, no "
+    "9. When you have listed every distinct finding once, close the JSON and "
+    "STOP. Do not start the list again from the beginning.\n"
+    "10. Return ONLY the JSON object — no prose, no markdown fences, no "
     "explanation.\n"
     "\n"
     "Example input:\n"
@@ -262,9 +276,10 @@ _INSTRUCTION = (
     "Example output:\n"
     f"{_EXAMPLE_OUTPUT}\n"
     "\n"
-    "Note that the example input mentions aspirin and a tobacco history, and "
-    "neither appears in the example output. That is correct — they are not "
-    "diagnoses, procedures or injuries.\n"
+    "Note that the example input mentions aspirin, a tobacco history, SBPs and "
+    "a hematocrit, and none of them appears in the example output. That is "
+    "correct — they are not diagnoses, procedures or injuries. Note also that "
+    "the output lists each finding exactly once and then stops.\n"
     "\n"
     'If there are genuinely no findings, return {"findings": []}.\n'
     "\n"

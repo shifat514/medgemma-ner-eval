@@ -570,8 +570,8 @@
     "notes_missing": [],
     "oracle": true,
     "overlap_words": 80,
-    "prompt_id": "7f93b2f6",
-    "run_tag": "medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_p7f93b2f6",
+    "prompt_id": "5046b887",
+    "run_tag": "medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_p5046b887",
     "thresholds": {
       "cosine_min": 0.6,
       "dice_min": 0.8,

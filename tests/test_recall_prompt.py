@@ -258,3 +258,55 @@ def test_messages_are_text_only_in_medgemmas_structure():
     messages = build_messages("text")
     assert [m["role"] for m in messages] == ["system", "user"]
     assert all(c["type"] == "text" for m in messages for c in m["content"])
+
+
+# --------------------------------------------------------------------------
+# Scope leaks the first smoke run found
+#
+# Rules 1 and 2 already forbade all of these in the abstract and the model
+# extracted them anyway: SBPs as "systolic blood pressure", pRBCs as "packed red
+# blood cells", the bowel prep GoLYTEly, and a bare "R sided kidney". Abstract
+# prohibitions do not work on a 4B model; named ones and demonstrated ones do.
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("leak", ["GoLYTELY", "pRBCs", "blood products",
+                                  "bowel preparations"])
+def test_prompt_names_the_substances_it_leaked(leak):
+    assert leak in build_prompt("")
+
+
+@pytest.mark.parametrize("leak", ["SBP", "hematocrit", "heart rate"])
+def test_prompt_names_the_measurements_it_leaked(leak):
+    assert leak in build_prompt("")
+
+
+def test_prompt_distinguishes_a_measurement_from_the_diagnosis_it_supports():
+    """Excluding labs must not exclude the condition they evidence."""
+    prompt = build_prompt("")
+    assert 'extract "anemia" if the note says anemia' in prompt
+
+
+def test_prompt_rejects_a_bare_body_part():
+    prompt = build_prompt("")
+    assert '"right kidney" is not a finding' in prompt
+
+
+def test_the_example_demonstrates_the_measurement_exclusions(tmp_path=None):
+    """A negative example, not an omitted category — the technique that finally
+    worked for medications, applied to vitals and labs."""
+    prompt = build_prompt("")
+    example_input = prompt.split("Example input:\n")[1].split("\n\nExample output")[0]
+    assert "SBPs" in example_input
+    assert "hematocrit" in example_input
+
+    start = prompt.index('{"findings"')
+    parsed = json.loads(prompt[start:prompt.index("\n", start)])
+    emitted = " ".join(f["span"] + " " + f["name"] for f in parsed["findings"]).lower()
+    for leaked in ("sbp", "hematocrit", "aspirin", "tobacco"):
+        assert leaked not in emitted
+
+
+def test_prompt_tells_the_model_to_stop_rather_than_restart():
+    """The observed failure was a verbatim replay of items 2-9 after item 16 --
+    greedy degeneration on a long list, which ran into the token cap."""
+    assert "Do not start the list again from the beginning" in build_prompt("")

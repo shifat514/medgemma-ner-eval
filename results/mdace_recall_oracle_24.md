@@ -1,7 +1,7 @@
 # MedGemma zero-shot recall benchmark — MDACE billing evidence
 
 Model **medgemma-4b-it-ORACLE** (`google/medgemma-4b-it`), 4-bit, greedy decoding, `max_new_tokens=1024`. Chunking 400 words / 80 overlap. 24 notes, 82 chunks.
-Prompt `7f93b2f6`, run `medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_p7f93b2f6`.
+Prompt `5046b887`, run `medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_p5046b887`.
 
 **ORACLE RUN — no model involved.** The gold accept-sets were fed back through the pipeline to check the harness. Every source below must read 1.0000 at L1 and the combined line must show zero false positives; anything less is a bug in chunking, normalization or matching, not a result.
 
