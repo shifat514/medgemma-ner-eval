@@ -108,13 +108,14 @@ def _medication_note(run_meta):
     variant = run_meta.get("prompt_variant", "scoped")
     if variant == "scoped":
         return (
-            "- **Medications are out of scope by instruction, which caps recall "
-            "at about 0.945.** The `scoped` prompt excludes them because asking "
-            "for them produced 33% of extraction for 5.5% of gold and truncated "
-            "12 of 15 chunks on the previous branch. Rows whose evidence is a "
-            "medication are unreachable here, so the ceiling is below 1.0 by "
-            "choice and the figures above should be read against 0.945 rather "
-            "than against a perfect score.\n")
+            "- **Medications and status/history are out of scope by "
+            "instruction, which caps recall below 1.0 by choice.** The `scoped` "
+            "prompt excludes medications because asking for them produced 33% of "
+            "extraction for 5.5% of gold and truncated 12 of 15 chunks on the "
+            "previous branch. Corpus-wide that puts about 5.5% of gold out of "
+            "reach, but THIS file is not the corpus: it carries only 2 "
+            "status/history rows out of 100, so the ceiling here is about "
+            "**0.98**, not 0.945. Read the figures above against 0.98.\n")
     return (
         f"- **Medications are not excluded by instruction in this run, and the "
         f"ceiling is unmeasured.** The `{variant}` prompt carries no medication "
@@ -124,6 +125,48 @@ def _medication_note(run_meta):
         f"therefore caps at about 0.945; this variant may reach higher or leak "
         f"medications as false positives, and only a per-source audit of the "
         f"5.5% of gold evidenced by medications would say which.\n")
+
+
+def _fp_bucket_section(result):
+    """What the false positives ARE. The count alone judges the annotation scope.
+
+    This is the half of "report false positives" that a raw count cannot give.
+    MDACE marks evidence only for codes that were actually billed, so a note is
+    full of genuine findings nobody billed; counting those as model error
+    measures the dataset, not the model.
+    """
+    top = result["levels"][-1]
+    m = result["by_source"][COMBINED][top]
+    buckets = m.get("fp_buckets")
+    if not buckets:
+        return ""
+    total = max(m["fp"], 1)
+    return (
+        f"### What the {top} false positives actually are\n\n"
+        "A count on its own cannot say whether a false positive is the model's "
+        "fault, so it is split three ways. **Only the middle row is model "
+        "error.**\n\n"
+        "| | count | share of FPs | |\n|---|---|---|---|\n"
+        f"| in the note, nothing billed for it | {buckets['in_note_unbilled']} | "
+        f"{_pct(buckets['in_note_unbilled'] / total)} | a correct extraction of "
+        "something nobody billed |\n"
+        f"| **not in the note at all** | **{buckets['not_in_note']}** | "
+        f"**{_pct(buckets['not_in_note'] / total)}** | **the model invented or "
+        "paraphrased it — real error** |\n"
+        f"| no verbatim span to check | {buckets['no_span']} | "
+        f"{_pct(buckets['no_span'] / total)} | unverifiable either way |\n\n"
+        "**None of this is subtracted from the false-positive count above.** "
+        "Removing your own false positives before dividing raises precision by "
+        "construction and measures nothing. It is reported alongside so the "
+        f"headline FP figure of {m['fp']} can be read for what it is: "
+        f"overwhelmingly correct extractions of findings that were never "
+        f"billed, plus {buckets['not_in_note']} genuine mistakes.\n\n"
+        "The one bucket that would strengthen this is unavailable here. On the "
+        "previous branch a false positive could also be checked against *other "
+        "notes from the same hospital admission* — a phrase billed elsewhere in "
+        "the encounter is demonstrably correct. This file carries 24 notes with "
+        "no siblings, so that check cannot be run."
+    )
 
 
 def _field_table(result):
@@ -434,7 +477,8 @@ def build_report(result, run_meta, data_stats):
         "evidence-text line. So every individual source line reads high, and "
         "**only the combined line counts predictions that matched nothing "
         "anywhere**. Counts, with the rate over all findings in brackets.\n\n"
-        + _source_fp_table(result)
+        + _source_fp_table(result) + "\n\n"
+        + _fp_bucket_section(result)
     )
 
     parts.append(

@@ -593,6 +593,36 @@ def _print_summary(result, run_meta):
               f"{m['codes_matched']:4}/{m['codes_total']:<4} {m['code_recall']:.4f}  "
               f"{m['forms_matched']:4}/{m['forms_total']:<4} {m['form_recall']:.4f}  "
               f"{m['fp']:6}  {m['fp_rate']:.4f}")
+    top = result["levels"][-1]
+    if result.get("by_field"):
+        print("\n--- which of the model's two fields matched " + "-" * 22)
+        print(f"  {'matched on':34} " + " ".join(f"{lv:>8}" for lv in result["levels"]))
+        for field, label in (("span", "span (copied from the note)"),
+                             ("name", "name (standard clinical name)"),
+                             ("both", "either field  <- the headline")):
+            cells = " ".join(f"{result['by_field'][field][lv]['row_recall']:8.4f}"
+                             for lv in result["levels"])
+            print(f"  {label:34} {cells}")
+        print("  Rows do not sum: one prediction claims at most one gold form.")
+
+    m = result["by_source"]["combined"][top]
+    buckets = m.get("fp_buckets") or {}
+    if buckets:
+        print(f"\n--- what the {top} false positives ARE " + "-" * 27)
+        total = max(m["fp"], 1)
+        print(f"  in the note, nothing billed for it  "
+              f"{buckets['in_note_unbilled']:6}  "
+              f"({100 * buckets['in_note_unbilled'] / total:5.1f}%)"
+              "   <- correct extraction, unbilled")
+        print(f"  not in the note at all              "
+              f"{buckets['not_in_note']:6}  "
+              f"({100 * buckets['not_in_note'] / total:5.1f}%)"
+              "   <- the only real model error")
+        print(f"  no span, cannot be checked          "
+              f"{buckets['no_span']:6}")
+        print("  MDACE marks only codes that were BILLED, so most misses are")
+        print("  correct findings nobody billed. Judge the model on line 2.")
+
     print(f"\n  findings per note   {volume['pred_per_note']:.1f}")
     print(f"  not in the note     {volume['n_not_in_note']}/"
           f"{volume['n_span_checked']} = {volume['not_in_note_rate']:.4f}"

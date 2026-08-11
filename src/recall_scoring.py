@@ -143,6 +143,7 @@ def score_source(records, preds, ladders, source=None, levels=LEVELS):
         rows_total = rows_hit = 0
         codes_total = codes_hit = 0
         n_pred = fp = 0
+        fp_buckets = {"in_note_unbilled": 0, "not_in_note": 0, "no_span": 0}
 
         for record in scored:
             matched = ladders[record["note_id"]][level]["matched_forms"]
@@ -165,8 +166,33 @@ def score_source(records, preds, ladders, source=None, levels=LEVELS):
             codes_total += len(reachable_codes(record, source))
             codes_hit += len(hit_codes)
 
-            n_pred += len(preds[record["note_id"]])
-            fp += len(preds[record["note_id"]]) - len(pairs)
+            note_findings = preds[record["note_id"]]
+            n_pred += len(note_findings)
+            fp += len(note_findings) - len(pairs)
+
+            # WHAT THE FALSE POSITIVES ARE, not just how many. MDACE marks
+            # evidence only for codes that were actually BILLED, so a note is
+            # full of real findings nobody billed. Counting those as model error
+            # measures the annotation scope instead of the model. The split:
+            #
+            #   in_note_unbilled  the phrase really is in the note; nothing was
+            #                     billed against it. A correct extraction.
+            #   not_in_note       the phrase is not in the note at all. The
+            #                     model invented or paraphrased it. REAL ERROR,
+            #                     and the only bucket that judges the model.
+            #   no_span           the model gave no verbatim span, so the claim
+            #                     cannot be checked either way.
+            note_norm = padded_note_norm(record.get("text", ""))
+            for index, finding in enumerate(note_findings):
+                if index in pairs:
+                    continue
+                span = normalize_term(finding.get("span"))
+                if not span:
+                    fp_buckets["no_span"] += 1
+                elif f" {span} " in note_norm:
+                    fp_buckets["in_note_unbilled"] += 1
+                else:
+                    fp_buckets["not_in_note"] += 1
 
         metrics = {
             "level": level,
@@ -181,6 +207,12 @@ def score_source(records, preds, ladders, source=None, levels=LEVELS):
             "code_recall": _rate(codes_hit, codes_total),
             "code_recall_ci": list(wilson_ci(codes_hit, codes_total)),
             "n_pred": n_pred, "fp": fp, "fp_rate": _rate(fp, n_pred),
+            "fp_buckets": fp_buckets,
+            # The hallucination rate among false positives specifically. The
+            # headline not-in-note rate is over ALL findings; this one is over
+            # the ones that missed, which is what "are the false positives the
+            # model's fault" actually asks.
+            "fp_not_in_note_rate": _rate(fp_buckets["not_in_note"], fp),
             "gain_rows": rows_hit - (previous["rows_matched"] if previous else 0),
             "gain_forms": forms_hit - (previous["forms_matched"] if previous else 0),
         }

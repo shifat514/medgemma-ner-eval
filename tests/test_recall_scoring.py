@@ -534,11 +534,11 @@ def test_the_report_states_the_ceiling_that_matches_the_prompt_that_ran(tmp_path
         return build_report(result, meta, stats)
 
     scoped = report_for("scoped")
-    assert "caps recall at about 0.945" in scoped
+    assert "ceiling here is about **0.98**" in scoped
 
     billable = report_for("billable")
     assert "ceiling is unmeasured" in billable
-    assert "caps recall at about 0.945" not in billable
+    assert "ceiling here is about **0.98**" not in billable
 
 
 def test_the_report_never_calls_the_run_zero_shot(tmp_path):
@@ -631,3 +631,46 @@ def test_the_report_shows_the_field_split_and_names_the_conservative_row(tmp_pat
     assert "Which of the model's two fields did the work?" in text
     assert "Read the `span` row as the conservative result" in text
     assert "closest thing to the old" in text
+
+
+# --------------------------------------------------------------------------
+# What the false positives ARE — the half a raw count cannot give
+# --------------------------------------------------------------------------
+
+def test_false_positives_are_split_into_error_and_unbilled(tmp_path):
+    """MDACE marks only codes that were BILLED, so a note is full of genuine
+    findings nobody billed. Counting those as model error measures the dataset."""
+    records, _ = _notes(tmp_path, [
+        _row(evidence="HTN", text="The patient has HTN, sepsis and cough.")])
+    preds = _preds(1, [
+        {"span": "HTN", "name": "hypertension"},        # a hit
+        {"span": "sepsis", "name": "sepsis"},           # in the note, unbilled
+        {"span": "cough", "name": "cough"},             # in the note, unbilled
+        {"span": "pneumonia", "name": "pneumonia"},     # NOT in the note
+        {"span": "", "name": "diabetes"},               # no span to check
+    ])
+    m = score_run(records, preds, levels=LEVELS)["by_source"]["combined"]["L1"]
+
+    assert m["fp_buckets"]["in_note_unbilled"] == 2
+    assert m["fp_buckets"]["not_in_note"] == 1
+    assert m["fp_buckets"]["no_span"] == 1
+    assert sum(m["fp_buckets"].values()) == m["fp"]
+
+
+def test_the_fp_hallucination_rate_is_over_misses_not_over_everything(tmp_path):
+    """'Are the false positives the model's fault' is a question about the
+    findings that missed, not about all findings."""
+    records, _ = _notes(tmp_path, [
+        _row(evidence="HTN", text="The patient has HTN and sepsis.")])
+    preds = _preds(1, [{"span": "HTN", "name": "hypertension"},
+                       {"span": "pneumonia", "name": "pneumonia"}])
+    m = score_run(records, preds, levels=LEVELS)["by_source"]["combined"]["L1"]
+    assert m["fp"] == 1
+    assert m["fp_not_in_note_rate"] == 1.0        # the single FP was invented
+
+
+def test_the_report_says_which_fp_bucket_is_model_error(tmp_path):
+    text = _report(tmp_path)
+    assert "What the L3 false positives actually are" in text
+    assert "Only the middle row is model error" in text
+    assert "billed elsewhere" in text or "billed elsewhere in" in text
