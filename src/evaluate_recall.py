@@ -605,6 +605,24 @@ def _print_summary(result, run_meta):
             print(f"  {label:34} {cells}")
         print("  Rows do not sum: one prediction claims at most one gold form.")
 
+    # The three gold columns, side by side. This lived only in the markdown
+    # report, and asking someone to open a file to see the comparison they asked
+    # for is how a result goes unread.
+    print("\n--- the three ways gold spells each answer " + "-" * 24)
+    print(f"  {'gold column':34} {'answers':>8} "
+          + " ".join(f"{lv:>8}" for lv in result["levels"]))
+    labels = {"combined": "any of the three  <- headline",
+              "evidence": "what the note says",
+              "description": "the official billing name",
+              "snomed": "the medical dictionary name"}
+    for source in ("combined", "evidence", "description", "snomed"):
+        by_level = result["by_source"][source]
+        total = by_level[result["levels"][0]]["forms_total"]
+        cells = " ".join(f"{by_level[lv]['form_recall']:8.4f}"
+                         for lv in result["levels"])
+        print(f"  {labels[source]:34} {total:>8} {cells}")
+    print("  Each row: of that column's phrasings, how many the model produced.")
+
     m = result["by_source"]["combined"][top]
     buckets = m.get("fp_buckets") or {}
     if buckets:
