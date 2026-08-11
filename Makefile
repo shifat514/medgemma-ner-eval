@@ -1,7 +1,8 @@
 .PHONY: setup test smoke eval lint clean \
         mimic-sample mimic-smoke mimic-50 mimic-100 mimic-oracle mimic-check \
         mdace-sample mdace-oracle mdace-smoke mdace-50 mdace-run \
-        recall-oracle recall-smoke recall-ab recall-compare recall-run \
+        recall-oracle recall-smoke recall-ab recall-compare recall-chunks \
+        recall-run \
         recall-rescore recall-judge \
         recall-questions clean-recall-runs
 
@@ -125,6 +126,18 @@ recall-ab:
 
 # Compare the two most recent finished runs. No GPU, no re-scoring.
 recall-compare:
+	uv run python -m src.recall_compare
+
+# The chunk-size experiment. Neither prompt fixed the volume problem -- both
+# extract 15-17x the gold -- and the prompt was never going to. Shorter windows
+# give the model less to describe per call, which attacks the volume AND the
+# repetition loop, since the loop is degeneration on a long list.
+#
+# 17 chunks at 400 words against 27 at 250, on the same 2 notes. More calls, but
+# each writes less, so the wall clock is roughly a wash.
+recall-chunks:
+	uv run python -m src.evaluate_recall --smoke 2 --dump-replies --chunk-words 400 --overlap-words 80
+	uv run python -m src.evaluate_recall --smoke 2 --dump-replies --chunk-words 250 --overlap-words 50
 	uv run python -m src.recall_compare
 
 # The benchmark: 24 notes / 82 chunks, ~1-1.5h on a T4. Resumable.

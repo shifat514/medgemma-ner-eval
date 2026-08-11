@@ -202,10 +202,10 @@ def test_prompt_asks_for_both_fields():
     assert "HTN" in prompt and "hypertension" in prompt
 
 
-def test_prompt_still_excludes_medications():
+def test_scoped_still_excludes_medications():
     """Carried forward by measurement: medications produced 33% of extraction
     for 5.5% of gold and truncated 12 of 15 chunks."""
-    prompt = build_prompt("")
+    prompt = build_prompt("", "scoped")
     assert "Do NOT extract medications" in prompt
     assert "aspirin" in prompt          # the negative example
 
@@ -272,22 +272,22 @@ def test_messages_are_text_only_in_medgemmas_structure():
 @pytest.mark.parametrize("leak", ["GoLYTELY", "pRBCs", "blood products",
                                   "bowel preparations"])
 def test_prompt_names_the_substances_it_leaked(leak):
-    assert leak in build_prompt("")
+    assert leak in build_prompt("", "scoped")
 
 
 @pytest.mark.parametrize("leak", ["SBP", "hematocrit", "heart rate"])
 def test_prompt_names_the_measurements_it_leaked(leak):
-    assert leak in build_prompt("")
+    assert leak in build_prompt("", "scoped")
 
 
 def test_prompt_distinguishes_a_measurement_from_the_diagnosis_it_supports():
     """Excluding labs must not exclude the condition they evidence."""
-    prompt = build_prompt("")
+    prompt = build_prompt("", "scoped")
     assert 'extract "anemia" if the note says anemia' in prompt
 
 
 def test_prompt_rejects_a_bare_body_part():
-    prompt = build_prompt("")
+    prompt = build_prompt("", "scoped")
     assert '"right kidney" is not a finding' in prompt
 
 

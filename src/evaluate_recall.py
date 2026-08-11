@@ -388,7 +388,17 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
     # Without it both arms of an A/B write the same results/ filename and the
     # second silently overwrites the first -- which then makes the comparison
     # tool pick up whatever unrelated run happens to be next-most-recent.
-    label = f"{label}_{prompt_variant or DEFAULT_VARIANT}"
+    #
+    # It carries the FULL configuration, not just the variant, and the long
+    # filename is the point. The first version keyed on note count alone, so
+    # both arms of the prompt A/B wrote one file and the second destroyed the
+    # first. Keying on the variant fixed that axis and left every other one --
+    # chunk geometry, token cap, an edit to a variant's own text -- with exactly
+    # the same hole. This mirrors the run tag, so two runs that differ in
+    # anything the model can see cannot share a results file.
+    label = (f"{label}_{prompt_variant or DEFAULT_VARIANT}"
+             f"_cw{chunk_words}_ov{overlap_words}_mnt{cap}"
+             f"_p{prompt_fingerprint(prompt_variant)}")
 
     tag = run_tag(chunk_words, overlap_words, model_name, cap,
                   prompt_id=prompt_fingerprint(prompt_variant))

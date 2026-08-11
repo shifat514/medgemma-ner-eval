@@ -379,7 +379,12 @@ _BILLABLE = (
 # land in separate run directories and neither can replay the other's numbers.
 VARIANTS = {"scoped": _SCOPED, "billable": _BILLABLE}
 
-DEFAULT_VARIANT = os.environ.get("RECALL_PROMPT", "scoped")
+# `billable` is the default on measurement, not taste. Head to head on the
+# same 17 chunks it cut hallucinated spans from 9.22% to 1.02% (95% CIs
+# 6.0-13.8 and 0.3-3.6, non-overlapping) at identical row recall, with
+# slightly lower volume and slightly fewer false positives. `scoped` is kept
+# runnable so the comparison can be repeated rather than taken on trust.
+DEFAULT_VARIANT = os.environ.get("RECALL_PROMPT", "billable")
 
 
 def instruction(variant=None):

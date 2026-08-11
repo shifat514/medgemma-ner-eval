@@ -306,8 +306,8 @@ def test_committed_metrics_carry_no_absolute_paths(tmp_path):
              results_dir=str(tmp_path / "results"),
              output_dir=str(tmp_path / "out"), embed=False)
 
-    written = json.loads((tmp_path / "results" /
-                          "mdace_recall_oracle_1_scoped_metrics.json").read_text())
+    written = json.loads(
+        next((tmp_path / "results").glob("*_metrics.json")).read_text())
 
     def strings(obj):
         if isinstance(obj, dict):
@@ -409,8 +409,9 @@ def test_each_prompt_variant_gets_its_own_results_filename(tmp_path):
                  embed=False, prompt_variant=variant)
 
     written = sorted(p.name for p in results.glob("*_metrics.json"))
-    assert written == ["mdace_recall_oracle_1_billable_metrics.json",
-                       "mdace_recall_oracle_1_scoped_metrics.json"]
+    assert len(written) == 2, written
+    assert any("_scoped_" in name for name in written)
+    assert any("_billable_" in name for name in written)
 
 
 def test_comparing_runs_over_different_notes_is_flagged_not_rendered_quietly():
@@ -433,3 +434,21 @@ def test_comparing_runs_over_different_notes_is_flagged_not_rendered_quietly():
 
     clean = render([_row_for("billable", 2), _row_for("scoped", 2)])
     assert "⚠️" not in clean
+
+
+def test_chunk_geometry_also_gets_its_own_results_filename(tmp_path):
+    """The variant fix closed one axis and left every other one open. A
+    chunk-size A/B would have destroyed an arm exactly the same way."""
+    from src.evaluate_recall import run_eval
+
+    _notes(tmp_path, [_row(text=" ".join(["word"] * 900) + " HTN")])
+    results = tmp_path / "results"
+    for chunk_words in (400, 250):
+        run_eval(sample_file=str(tmp_path / "sample.jsonl"), oracle=True,
+                 results_dir=str(results), output_dir=str(tmp_path / "out"),
+                 embed=False, chunk_words=chunk_words)
+
+    written = sorted(p.name for p in results.glob("*_metrics.json"))
+    assert len(written) == 2, written
+    assert any("cw400" in name for name in written)
+    assert any("cw250" in name for name in written)
