@@ -674,3 +674,12 @@ def test_the_report_says_which_fp_bucket_is_model_error(tmp_path):
     assert "What the L3 false positives actually are" in text
     assert "Only the middle row is model error" in text
     assert "billed elsewhere" in text or "billed elsewhere in" in text
+
+
+def test_the_report_cross_checks_against_the_right_column(tmp_path):
+    """The previous branch matched copied phrasing against note wording only.
+    That is span-only at L1, not the combined row -- quoting the combined row as
+    the comparison overstates the gain."""
+    text = _report(tmp_path)
+    assert "0.5278" in text
+    assert "not the combined row" in text
