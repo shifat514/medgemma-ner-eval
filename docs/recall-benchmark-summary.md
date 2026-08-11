@@ -59,9 +59,20 @@ Gold spells each answer three ways:
 `Essential (primary) hypertension` — same condition, no shared characters.
 Scoring against catalogue wording alone gives the model 1%.
 
-## Precision — needs reading carefully
+## Precision, recall and F1 per source
 
-1,225 findings produced, 142 matched, so 1,083 "false positives". Split:
+| gold source | entries | precision | recall | F1 | max precision possible |
+|---|---|---|---|---|---|
+| any of the three | 318 | 0.1159 | 0.4465 | 0.1841 | **0.2571** |
+| what the note says | 99 | 0.0612 | 0.7576 | 0.1133 | **0.0808** |
+| official billing name | 91 | 0.0482 | 0.6484 | 0.0897 | **0.0743** |
+| medical dictionary name | 142 | 0.0547 | 0.4718 | 0.0980 | **0.1151** |
+
+**Precision and F1 here are diagnostics, not quality**, for two reasons that have
+nothing to do with the model.
+
+**1. The annotation scope.** 1,225 findings produced, 142 matched, so 1,083
+"false positives" — but:
 
 | | count | |
 |---|---|---|
@@ -69,7 +80,24 @@ Scoring against catalogue wording alone gives the model 1%.
 | **not in the note at all** | **50 (4.6%)** | **real error** |
 
 MDACE annotates only codes that were actually *billed*, and a note is full of
-real conditions nobody billed. **The true error rate is 4.6%, not 88%.**
+real conditions nobody billed. Those are counted against precision anyway,
+because subtracting your own false positives before dividing raises precision by
+construction. **The true error rate is 4.6%, not 88%.**
+
+**2. Per-source, "false positive" means "matched nothing *in that source*".** A
+prediction that correctly hits the catalogue wording counts as a false positive
+on the note-wording row, so every single-source row carries almost the whole
+prediction set as false positives. Only the combined row counts predictions that
+matched nothing anywhere.
+
+Hence the **max precision possible** column — the arithmetic ceiling given how
+many findings were produced. With 1,225 predictions against 318 accepted
+phrasings, **no extractor of any quality exceeds 0.2571 on the combined row.**
+F1 blends precision with recall and sits near the worse of them, so it inherits
+all of this and should not be quoted as a headline.
+
+The one precision-side figure that is *not* distorted is the **4.2%
+not-in-the-note rate**, because it does not depend on what was billed at all.
 
 ## Caveats
 
