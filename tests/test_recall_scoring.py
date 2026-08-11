@@ -511,3 +511,52 @@ def test_unreadable_verdicts_are_not_treated_as_rejections(tmp_path):
 
     rejected = load_rejected(str(tmp_path))
     assert rejected == {(1, "a", "a", "x")}
+
+
+def test_the_report_states_the_ceiling_that_matches_the_prompt_that_ran(tmp_path):
+    """scoped excludes medications and therefore caps near 0.945; billable does
+    not exclude them and its ceiling is unmeasured. A committed report asserting
+    the wrong one is a claim somebody would reasonably rely on."""
+    records, stats = _notes(tmp_path, [_row()])
+    preds = _preds(1, [{"span": "HTN", "name": "hypertension"}])
+    result = score_run(records, preds, levels=LEVELS)
+
+    def report_for(variant):
+        meta = {
+            "model_name": "m", "model_id": "m", "max_new_tokens": 1024,
+            "chunk_words": 400, "overlap_words": 80, "n_notes_scored": 1,
+            "n_chunks": 1, "n_cap_hits": 0, "n_chunks_salvaged": 0,
+            "prompt_id": "abc12345", "run_tag": "t", "oracle": False,
+            "levels": list(LEVELS), "prompt_variant": variant,
+            "thresholds": {"dice_min": 0.8, "ratio_min": 0.9,
+                           "cosine_min": 0.6, "embed_model": None},
+        }
+        return build_report(result, meta, stats)
+
+    scoped = report_for("scoped")
+    assert "caps recall at about 0.945" in scoped
+
+    billable = report_for("billable")
+    assert "ceiling is unmeasured" in billable
+    assert "caps recall at about 0.945" not in billable
+
+
+def test_the_report_never_calls_the_run_zero_shot(tmp_path):
+    """Both variants carry a worked example. The example is doing real work, so
+    the honest label is one-shot."""
+    records, stats = _notes(tmp_path, [_row()])
+    result = score_run(records, _preds(1, [{"span": "HTN", "name": "h"}]),
+                       levels=LEVELS)
+    meta = {"model_name": "m", "model_id": "m", "max_new_tokens": 1024,
+            "chunk_words": 400, "overlap_words": 80, "n_notes_scored": 1,
+            "n_chunks": 1, "n_cap_hits": 0, "n_chunks_salvaged": 0,
+            "prompt_id": "a", "run_tag": "t", "oracle": False,
+            "levels": list(LEVELS), "prompt_variant": "billable",
+            "thresholds": {"dice_min": 0.8, "ratio_min": 0.9,
+                           "cosine_min": 0.6, "embed_model": None}}
+    text = build_report(result, meta, stats)
+    assert "One-shot, not zero-shot" in text
+    # The word may appear only inside the sentence that corrects it, never as a
+    # description of the run.
+    assert "zero-shot recall benchmark" not in text
+    assert "zero-shot" not in text.split("One-shot, not zero-shot")[0]

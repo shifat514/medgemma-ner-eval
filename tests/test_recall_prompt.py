@@ -370,3 +370,19 @@ def test_the_default_variant_is_stable():
 
     assert build_prompt("") == build_prompt("", DEFAULT_VARIANT)
     assert prompt_fingerprint() == prompt_fingerprint(DEFAULT_VARIANT)
+
+
+def test_the_docstring_does_not_claim_an_exclusion_the_default_lacks():
+    """This drifted once and shipped for a commit. The medication exclusion is a
+    property of `scoped`; `billable` is the default and has no such rule, so a
+    docstring asserting it as a property of the benchmark is false."""
+    import src.prompt_recall as mod
+
+    doc = mod.__doc__
+    assert "VARIANT-SPECIFIC" in doc
+    # The unqualified claim must not come back.
+    assert "medications stay out of scope (they produced" not in doc
+
+    scoped, billable = mod.VARIANTS["scoped"], mod.VARIANTS["billable"]
+    assert "medications" in scoped
+    assert "medications" not in billable

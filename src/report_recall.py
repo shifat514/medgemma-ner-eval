@@ -35,16 +35,26 @@ def _rate(value, ci):
 
 
 def _ladder_table(result):
-    lines = [
-        "| level | rule | rows recalled | codes recalled | accepted forms matched | false positives | FP rate |",
-        "|---|---|---|---|---|---|---|",
-    ]
+    adj = result.get("adjudicated")
+    head = ("| level | rule | rows recalled | codes recalled "
+            "| accepted forms matched | false positives | FP rate |")
+    rule = "|---|---|---|---|---|---|---|"
+    if adj:
+        head = head.replace("| rows recalled |",
+                            "| rows recalled | rows after L5 |")
+        rule += "---|"
+    lines = [head, rule]
     for level in result["levels"]:
         m = result["by_source"][COMBINED][level]
+        judged = ""
+        if adj:
+            a = adj[COMBINED][level]
+            judged = (f" {a['rows_matched']}/{a['rows_total']} "
+                      f"{_rate(a['row_recall'], a['row_recall_ci'])} |")
         lines.append(
             f"| **{level}** | {_RULES.get(level, '')} | "
             f"{m['rows_matched']}/{m['rows_total']} "
-            f"{_rate(m['row_recall'], m['row_recall_ci'])} | "
+            f"{_rate(m['row_recall'], m['row_recall_ci'])} |" + judged + " "
             f"{m['codes_matched']}/{m['codes_total']} {m['code_recall']:.4f} | "
             f"{m['forms_matched']}/{m['forms_total']} {m['form_recall']:.4f} | "
             f"{m['fp']} | {m['fp_rate']:.4f} |"
@@ -83,6 +93,88 @@ def _source_fp_table(result):
                            for lv in levels)
         lines.append(f"| {SOURCE_LABELS[source]} | {cells} |")
     return "\n".join(lines)
+
+
+def _medication_note(run_meta):
+    """Where medications stand — which now depends on which prompt ran.
+
+    This paragraph was written when there was one prompt, and it asserted a
+    measured exclusion as though it were a property of the benchmark. It is a
+    property of the `scoped` variant only. `billable` has no medication rule at
+    all: its exclusion, if any, is an emergent consequence of the coder test and
+    is unmeasured. Saying otherwise in a committed report is the kind of claim
+    somebody would reasonably rely on.
+    """
+    variant = run_meta.get("prompt_variant", "scoped")
+    if variant == "scoped":
+        return (
+            "- **Medications are out of scope by instruction, which caps recall "
+            "at about 0.945.** The `scoped` prompt excludes them because asking "
+            "for them produced 33% of extraction for 5.5% of gold and truncated "
+            "12 of 15 chunks on the previous branch. Rows whose evidence is a "
+            "medication are unreachable here, so the ceiling is below 1.0 by "
+            "choice and the figures above should be read against 0.945 rather "
+            "than against a perfect score.\n")
+    return (
+        f"- **Medications are not excluded by instruction in this run, and the "
+        f"ceiling is unmeasured.** The `{variant}` prompt carries no medication "
+        f"rule; whether the model still leaves them alone is an emergent "
+        f"consequence of asking only for codeable findings, not something this "
+        f"run establishes. The `scoped` variant excludes them explicitly and "
+        f"therefore caps at about 0.945; this variant may reach higher or leak "
+        f"medications as false positives, and only a per-source audit of the "
+        f"5.5% of gold evidenced by medications would say which.\n")
+
+
+def _l5_notes(result, run_meta):
+    """What adjudication cost, and why rows fall by less than pairs do."""
+    adj = result.get("adjudicated")
+    if not adj:
+        return ("**L5 has not been applied to these figures.** Every level above "
+                "L1 still includes matches nobody has checked, so **quote L1 as "
+                "the number that needs no caveat.**")
+    top = result["levels"][-1]
+    raw = result["by_source"][COMBINED][top]
+    judged = adj[COMBINED][top]
+    lost = raw["rows_matched"] - judged["rows_matched"]
+    return (
+        f"**L5 has been applied.** A judge was shown every pair the levels above "
+        f"L1 newly accepted and asked whether the two phrases name the same "
+        f"clinical finding; {run_meta.get('n_rejected_pairs', 0)} were rejected "
+        f"and removed. The `rows after L5` column is the result, and it is the "
+        f"one to quote.\n\n"
+        f"**Rejected pairs cost far less recall than their count suggests.** "
+        f"{run_meta.get('n_rejected_pairs', 0)} rejected pairings cost {lost} "
+        f"row{'' if lost == 1 else 's'} at {top}. A row is recalled by matching "
+        f"any ONE of its accepted forms and the median row has four, so it "
+        f"usually keeps another supporting form when one pairing is thrown out. "
+        f"The three-column accept-set was built to fix the `HTN` problem; it "
+        f"turns out to also make the ladder robust to its own looseness.\n\n"
+        f"A rejected pair is removed as an *edge*, not as a finished assignment, "
+        f"so the matcher re-solves — a finding whose pairing was thrown out may "
+        f"legitimately match a different form. That is why a higher level can "
+        f"lose fewer rows than a lower one despite more of its pairs being "
+        f"rejected.")
+
+
+def _l3_notes(result):
+    """Say when a level earned nothing, rather than leaving a flat row."""
+    levels = result["levels"]
+    if "L3" not in levels:
+        return ""
+    l2 = result["by_source"][COMBINED]["L2"]
+    l3 = result["by_source"][COMBINED]["L3"]
+    gained = l3["forms_matched"] - l2["forms_matched"]
+    if gained > 3:
+        return ""
+    return (
+        f"**L3 earned almost nothing at these thresholds** — {gained} accepted "
+        f"form{'' if gained == 1 else 's'} beyond L2. Dice 0.80 and character "
+        f"ratio 0.90 are strict enough that whole-token containment has already "
+        f"taken everything they would reach. That is a finding about the "
+        f"thresholds, not about the model: either loosen them and re-score "
+        f"(`--score-only --dice-min …`, no GPU), or read the ladder as three "
+        f"effective levels rather than four.")
 
 
 def _l4_caveat():
@@ -151,9 +243,15 @@ def build_report(result, run_meta, data_stats):
     parts = []
 
     parts.append(
-        "# MedGemma zero-shot recall benchmark — MDACE billing evidence\n\n"
+        "# MedGemma recall benchmark — MDACE billing evidence\n\n"
         f"Model **{run_meta['model_name']}** (`{run_meta['model_id']}`), "
-        f"4-bit, greedy decoding, `max_new_tokens={run_meta['max_new_tokens']}`. "
+        f"4-bit, greedy decoding, `max_new_tokens={run_meta['max_new_tokens']}`, "
+        f"prompt variant `{run_meta.get('prompt_variant', '?')}`. "
+        "**One-shot, not zero-shot:** the prompt carries a single synthetic "
+        "worked example containing no MDACE content. It is not the thing under "
+        "test — the comments in `prompt_recall` record that abstract "
+        "prohibitions failed on a 4B model where a demonstrated one worked — but "
+        "it is an example, and calling the run zero-shot would be wrong. "
         f"Chunking {run_meta['chunk_words']} words / "
         f"{run_meta['overlap_words']} overlap. "
         f"{run_meta['n_notes_scored']} notes, {run_meta.get('n_chunks', 0)} "
@@ -220,6 +318,8 @@ def build_report(result, run_meta, data_stats):
         "because the per-source breakdown below is measured in forms and the "
         "two must reconcile.\n\n"
         + _gain_notes(result) + "\n\n"
+        + _l5_notes(result, run_meta) + "\n\n"
+        + _l3_notes(result) + "\n\n"
         "**Thresholds are reported, never silently chosen.** "
         f"Dice ≥ `{thresholds.get('dice_min')}`, "
         f"character ratio ≥ `{thresholds.get('ratio_min')}`, "
@@ -364,24 +464,30 @@ def build_report(result, run_meta, data_stats):
 
     parts.append(
         "## Known limits\n\n"
-        "- **L5 has not been applied to these figures.** The pairs L2, L3 and "
-        "L4 newly accepted are written to the run directory and are adjudicated "
-        "by a separate step (`python -m src.recall_judge`). Until that has run, "
-        "every level above L1 includes matches nobody has checked — the "
-        "negation and the *diabetes insipidus* shapes above are real and "
-        "unquantified. **Quote L1 as the number that needs no caveat.**\n"
-        "- **The SNOMED lookup is approximated, not performed.** The ladder "
+        + (
+            "- **L5 has been applied, by the model under test.** The judge was "
+            "the same 4-bit MedGemma being benchmarked. It rejected a third of "
+            "the pairs its own matcher proposed, which is not the direction a "
+            "self-serving judge fails in, but an independent judge would be "
+            "stronger evidence and `--judge none` exists for that.\n"
+            if result.get("adjudicated") else
+            "- **L5 has not been applied to these figures.** The pairs L2, L3 "
+            "and L4 newly accepted are written to the run directory and are "
+            "adjudicated by a separate step (`python -m src.recall_judge`). "
+            "Until that has run, every level above L1 includes matches nobody "
+            "has checked — the negation and the *diabetes insipidus* shapes "
+            "above are real and unquantified. **Quote L1 as the number that "
+            "needs no caveat.**\n"
+        )
+        + "- **The SNOMED lookup is approximated, not performed.** The ladder "
         "stands in for a real terminology lookup. L4 reaches abbreviations, "
         "which is the part that matters most, but it is a similarity model and "
         "not a terminology — and the measurement above shows it cannot tell a "
         "synonym from a change of acuity.\n"
-        "- **Medications are out of scope, by measurement.** The prompt "
-        "excludes them because asking for them produced 33% of extraction for "
-        "5.5% of gold and truncated 12 of 15 chunks on the previous branch. "
-        "Rows whose evidence is a medication are therefore unreachable.\n"
-        "- **MIMIC-III only.** MDACE is built on MIMIC-III notes. It shares no "
-        "notes with the MIMIC-IV medication evaluation in this repo, so the two "
-        "sets of numbers must not be pooled."
+        + _medication_note(run_meta)
+        + "- **MIMIC-III only.** MDACE is built on MIMIC-III notes. It shares "
+        "no notes with the MIMIC-IV medication evaluation in this repo, so the "
+        "two sets of numbers must not be pooled."
     )
 
     return _SEP.join(parts) + "\n"
@@ -406,6 +512,9 @@ def write_report(result, run_meta, data_stats, results_dir="results",
             "levels": result["levels"],
             "by_source": result["by_source"],
             "volume": result["volume"],
+            # The adjudicated ladder is the quotable one once L5 has run, so it
+            # belongs in the artifact and not only in the console output.
+            "adjudicated": result.get("adjudicated"),
             "n_new_pairs": {lv: len(p) for lv, p in result["new_pairs"].items()},
         }, f, indent=2, sort_keys=True)
 

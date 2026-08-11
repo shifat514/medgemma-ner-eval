@@ -24,10 +24,23 @@ form truncated 7 of 15 smoke chunks at 1024. It is paid back by asking for one
 entry per distinct finding with no repeats, which also serves the
 false-positive concern: repeats were pure volume.
 
-CARRIED FORWARD UNCHANGED, all of it measured on the previous branch:
-medications stay out of scope (they produced 33% of extraction for 5.5% of gold
-and truncated 12 of 15 chunks), the redaction-marker instruction stays,
-`max_new_tokens` stays at 1024, and the truncation salvage stays.
+CARRIED FORWARD UNCHANGED, all of it measured on the previous branch: the
+redaction-marker instruction stays, `max_new_tokens` stays at 1024, and the
+truncation salvage stays.
+
+MEDICATIONS ARE VARIANT-SPECIFIC, AND THIS PARAGRAPH USED TO GET IT WRONG. The
+measured exclusion — asking for medications produced 33% of extraction for 5.5%
+of gold and truncated 12 of 15 chunks — is carried forward by `_SCOPED` ONLY.
+`_BILLABLE`, which is the default, has no medication rule at all; whether the
+model still leaves them alone follows from asking only for codeable findings and
+is unmeasured. So `scoped` caps recall at about 0.945 by choice, and `billable`
+has an unmeasured ceiling that may be higher.
+
+This docstring asserted the exclusion as a property of the benchmark for one
+commit after the default changed, which is exactly the failure the prompt hash
+exists to prevent one level down: prose describing a configuration that is no
+longer running. `tests/test_recall_prompt` now pins each claim to the variant
+that actually makes it.
 
 THE PROMPT HASH IS PART OF THE RUN-DIRECTORY NAME, so this rewrite starts a
 fresh cache automatically and cannot replay the term-NER prompt's results.
