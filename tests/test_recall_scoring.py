@@ -683,3 +683,24 @@ def test_the_report_cross_checks_against_the_right_column(tmp_path):
     text = _report(tmp_path)
     assert "0.5278" in text
     assert "not the combined row" in text
+
+
+def test_per_source_precision_and_f1_are_reported_with_their_ceiling(tmp_path):
+    """Asked for by name. Both are near-meaningless here, so the ceiling ships
+    with them: 6% precision reads as failure until you know 26% was the max."""
+    records, _ = _notes(tmp_path, [_row(evidence="HTN", text="HTN and sepsis.")])
+    preds = _preds(1, [{"span": "HTN", "name": "hypertension"},
+                       {"span": "sepsis", "name": "sepsis"}])
+    m = score_run(records, preds, levels=LEVELS)["by_source"]["evidence"]["L1"]
+
+    assert m["tp"] == 1 and m["n_pred"] == 2
+    assert m["precision"] == pytest.approx(0.5)
+    assert m["f1"] == pytest.approx(2 * 1 / (2 + 1))
+    assert m["precision_ceiling"] == pytest.approx(0.5)
+
+
+def test_the_report_warns_that_per_source_precision_is_not_quality(tmp_path):
+    text = _report(tmp_path)
+    assert "Precision, recall and F1 per source" in text
+    assert "diagnostics, not as quality" in text
+    assert "best precision possible" in text

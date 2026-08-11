@@ -167,6 +167,64 @@ def _cross_check(result):
     )
 
 
+def _prf_table(result):
+    """Precision / recall / F1 per gold source, at the top level."""
+    top = result["levels"][-1]
+    lines = [
+        "| gold source | entries | precision | recall | F1 | best precision possible |",
+        "|---|---|---|---|---|---|",
+    ]
+    for source in (COMBINED,) + tuple(SOURCES):
+        m = result["by_source"][source][top]
+        lines.append(
+            f"| {SOURCE_LABELS[source]} | {m['forms_total']} | "
+            f"{m['precision']:.4f} | {m['recall_shown']:.4f} | {m['f1']:.4f} | "
+            f"{m['precision_ceiling']:.4f} |")
+    return "\n".join(lines)
+
+
+def _prf_section(result):
+    """P/R/F1 per source, plus the two reasons not to read them as quality.
+
+    Asked for by name. Both precision and F1 are close to meaningless here and
+    the table is worthless without the paragraph under it, so they ship together.
+    """
+    top = result["levels"][-1]
+    combined = result["by_source"][COMBINED][top]
+    for source in (COMBINED,) + tuple(SOURCES):
+        m = result["by_source"][source][top]
+        m["recall_shown"] = m["form_recall"]
+    return (
+        f"## Precision, recall and F1 per source (at {top})\n\n"
+        + _prf_table(result) + "\n\n"
+        "**Read the precision and F1 columns as diagnostics, not as quality.** "
+        "Two separate things push them down for reasons that have nothing to do "
+        "with the model:\n\n"
+        f"1. **The annotation scope.** MDACE marks evidence only for codes that "
+        f"were actually billed, and a note is full of real conditions nobody "
+        f"billed. {_pct(1 - (combined['fp_buckets']['not_in_note'] / max(combined['fp'], 1)))} "
+        f"of this run's false positives are phrases genuinely present in the "
+        f"note. They are counted against precision anyway, because subtracting "
+        f"your own false positives before dividing raises precision by "
+        f"construction and measures nothing.\n"
+        "2. **Per-source false positives mean \"matched nothing *in that "
+        "source*\".** A prediction that correctly matches the catalogue wording "
+        "is a false positive on the evidence-text row. Every single-source row "
+        "therefore carries almost the whole prediction set as false positives, "
+        "and only the combined row counts predictions that matched nothing "
+        "anywhere.\n\n"
+        f"The **best precision possible** column is the arithmetic ceiling given "
+        f"how many findings were produced: with {combined['n_pred']} predictions "
+        f"against {combined['forms_total']} accepted phrasings, no extractor of "
+        f"any quality exceeds {combined['precision_ceiling']:.4f} on the combined "
+        f"row. F1 blends precision with recall and sits near the worse of them, "
+        f"so it inherits all of this and should not be quoted as a headline.\n\n"
+        "**The precision-side number that is not distorted** is the "
+        "not-in-the-note rate, because it does not depend on what was billed at "
+        "all. It is in the section above."
+    )
+
+
 def _fp_bucket_section(result):
     """What the false positives ARE. The count alone judges the annotation scope.
 
@@ -520,6 +578,8 @@ def build_report(result, run_meta, data_stats):
         + _source_fp_table(result) + "\n\n"
         + _fp_bucket_section(result)
     )
+
+    parts.append(_prf_section(result))
 
     parts.append(
         "## What the SNOMED column is, and is not\n\n"

@@ -630,6 +630,15 @@ def _print_summary(result, run_meta):
                          for lv in result["levels"])
         print(f"  {labels[source]:34} {total:>8} {cells}")
     print("  Each row: of that column's phrasings, how many the model produced.")
+    print(f"\n  precision / recall / F1 per source at {top}:")
+    print(f"  {'gold column':30} {'prec':>7} {'recall':>7} {'F1':>7} {'max prec':>9}")
+    for source in ("combined", "evidence", "description", "snomed"):
+        m = result["by_source"][source][top]
+        print(f"  {labels[source][:30]:30} {m['precision']:7.4f} "
+              f"{m['form_recall']:7.4f} {m['f1']:7.4f} "
+              f"{m['precision_ceiling']:9.4f}")
+    print("  Precision/F1 are NOT quality here: most 'false positives' are real")
+    print("  findings nobody billed, and 'max prec' is the arithmetic ceiling.")
     print("  Top row is NOT a score: it counts all 318 phrasings, but a gold")
     print("  answer only needs ONE of its ~4 to count as found.")
 

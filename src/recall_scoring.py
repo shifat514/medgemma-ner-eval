@@ -144,6 +144,7 @@ def score_source(records, preds, ladders, source=None, levels=LEVELS):
         codes_total = codes_hit = 0
         n_pred = fp = 0
         fp_buckets = {"in_note_unbilled": 0, "not_in_note": 0, "no_span": 0}
+        best_possible_tp = 0
 
         for record in scored:
             matched = ladders[record["note_id"]][level]["matched_forms"]
@@ -165,6 +166,11 @@ def score_source(records, preds, ladders, source=None, levels=LEVELS):
                     hit_codes.add(entry["code_key"])
             codes_total += len(reachable_codes(record, source))
             codes_hit += len(hit_codes)
+            # Best precision any extractor could reach on this note given how
+            # much it predicted. Without it a per-source precision of 6% reads
+            # as model failure when 26% was the arithmetic maximum.
+            best_possible_tp += min(len(source_forms(record, source)),
+                                    len(preds[record["note_id"]]))
 
             note_findings = preds[record["note_id"]]
             n_pred += len(note_findings)
@@ -207,6 +213,14 @@ def score_source(records, preds, ladders, source=None, levels=LEVELS):
             "code_recall": _rate(codes_hit, codes_total),
             "code_recall_ci": list(wilson_ci(codes_hit, codes_total)),
             "n_pred": n_pred, "fp": fp, "fp_rate": _rate(fp, n_pred),
+            # tp == forms matched: matching is 1:1, so a matched finding and a
+            # matched gold form are the same event counted from either side.
+            "tp": forms_hit,
+            "precision": _rate(forms_hit, n_pred),
+            "f1": (2 * forms_hit / (n_pred + forms_total)
+                   if (n_pred + forms_total) else 0.0),
+            "precision_ci": list(wilson_ci(forms_hit, n_pred)),
+            "precision_ceiling": _rate(best_possible_tp, n_pred),
             "fp_buckets": fp_buckets,
             # The hallucination rate among false positives specifically. The
             # headline not-in-note rate is over ALL findings; this one is over
