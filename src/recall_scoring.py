@@ -44,7 +44,7 @@ from .datasets.mdace_recall import (
     source_forms,
 )
 from .recall_config import COMBINED, COSINE_MIN, DICE_MIN, LEVELS, RATIO_MIN, SOURCES
-from .recall_matching import candidate_strings, match
+from .recall_matching import candidate_strings, field_candidates, match
 
 # One 10-line statistical function, unchanged from the term-NER branch. Imported
 # rather than copied so the two sets of intervals cannot drift apart.
@@ -96,10 +96,11 @@ def not_in_note(findings, note_text):
 
 def match_notes(records, preds, source=None, embedder=None, dice_min=DICE_MIN,
                 ratio_min=RATIO_MIN, cosine_min=COSINE_MIN, levels=LEVELS,
-                rejected=None):
+                rejected=None, field="both"):
     """Run the ladder on every scored note. Returns ``{note_id: ladder}``.
 
-    `preds` maps note_id to a list of deduped findings.
+    `preds` maps note_id to a list of deduped findings. `field` restricts which
+    of a finding's two strings may match — see `field_candidates`.
     """
     out = {}
     for record in records:
@@ -118,8 +119,10 @@ def match_notes(records, preds, source=None, embedder=None, dice_min=DICE_MIN,
                 for form in source_forms(record, source)
                 if (record["note_id"], f["span"], f["name"], form) in rejected
             }
+        cands = [f["cands"] if field == "both"
+                 else field_candidates(f, field) for f in findings]
         out[record["note_id"]] = match(
-            [f["cands"] for f in findings], source_forms(record, source),
+            cands, source_forms(record, source),
             embedder=embedder, dice_min=dice_min, ratio_min=ratio_min,
             cosine_min=cosine_min, levels=levels, blocked=blocked,
         )
@@ -268,9 +271,23 @@ def score_run(records, preds, embedder=None, dice_min=DICE_MIN,
         if source == COMBINED:
             combined_ladders = ladders
 
+    # The span/name split, on the combined accept-set only. Four sources times
+    # three fields would be twelve matchings for a question that only needs
+    # three: how much of the result is faithful copying, how much is medical
+    # vocabulary, and how much is either.
+    by_field = {}
+    for field in ("span", "name", "both"):
+        ladders = match_notes(records, preds, source=None, embedder=embedder,
+                              dice_min=dice_min, ratio_min=ratio_min,
+                              cosine_min=cosine_min, levels=levels,
+                              rejected=rejected, field=field)
+        by_field[field] = score_source(records, preds, ladders, source=None,
+                                       levels=levels)
+
     return {
         "levels": list(levels),
         "by_source": by_source,
+        "by_field": by_field,
         "volume": volume(records, preds),
         # Only the combined matching's new pairs are dumped. It is the headline
         # matching and the one L5 adjudicates; four near-identical dumps would

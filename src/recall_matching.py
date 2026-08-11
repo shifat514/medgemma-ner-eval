@@ -380,6 +380,37 @@ def match(findings, gold_forms, embedder=None, dice_min=DICE_MIN,
     return results
 
 
+def field_candidates(finding, field="both"):
+    """The normalized strings one finding offers, restricted to one field.
+
+    WHY THIS EXISTS. The ladder was built to measure what each degree of
+    looseness buys. But a finding offers `span` AND `name`, and either may
+    match — so L1, which is supposed to be exact matching against the note's
+    own wording, silently also counts cases where the model's EXPANSION of an
+    abbreviation happened to equal the official catalogue name. Those are two
+    different abilities pooled into one number, and it is the number the whole
+    ladder is measured against.
+
+    Scoring `span` and `name` separately separates them:
+
+      span   how much the model recovered by copying the note faithfully
+      name   how much it recovered by knowing the standard medical vocabulary
+      both   the union, which is what the headline reports
+
+    `span` is also the only field the not-in-note check can see, so span-only
+    recall is the half of the result that is verifiable against the note.
+    """
+    span = normalize_term(finding.get("span"))
+    name = normalize_term(finding.get("name"))
+    if field == "span":
+        picked = (span,)
+    elif field == "name":
+        picked = (name,)
+    else:
+        picked = (span, name)
+    return tuple(dict.fromkeys(s for s in picked if s))
+
+
 def candidate_strings(finding):
     """The normalized strings one finding offers to the matcher.
 

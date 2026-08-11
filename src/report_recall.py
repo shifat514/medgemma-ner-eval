@@ -126,6 +126,21 @@ def _medication_note(run_meta):
         f"5.5% of gold evidenced by medications would say which.\n")
 
 
+def _field_table(result):
+    """Recall split by which of the model's two fields did the matching."""
+    levels = result["levels"]
+    labels = {"span": "**span** — the phrase copied from the note",
+              "name": "**name** — the standard clinical name",
+              "both": "either field (the headline)"}
+    lines = ["| matched on | " + " | ".join(levels) + " |",
+             "|---|" + "---|" * len(levels)]
+    for field in ("span", "name", "both"):
+        by_level = result["by_field"][field]
+        cells = " | ".join(f"{by_level[lv]['row_recall']:.4f}" for lv in levels)
+        lines.append(f"| {labels[field]} | {cells} |")
+    return "\n".join(lines)
+
+
 def _l5_notes(result, run_meta):
     """What adjudication cost, and why rows fall by less than pairs do."""
     adj = result.get("adjudicated")
@@ -346,6 +361,31 @@ def build_report(result, run_meta, data_stats):
            "abbreviations like *CHF* remain unreachable. The recall figures "
            "above are correspondingly a floor.")
     )
+
+    if result.get("by_field"):
+        parts.append(
+            "## Which of the model's two fields did the work?\n\n"
+            "Every finding carries two strings: `span`, copied from the note "
+            "character for character, and `name`, the standard clinical name "
+            "with abbreviations expanded. Either is allowed to match, which "
+            "means the headline pools two different abilities — faithful "
+            "copying and medical vocabulary — into one number. Splitting them "
+            "is the only way to read the ladder as intended.\n\n"
+            + _field_table(result) + "\n\n"
+            "**The rows do not add up, and that is correct.** One prediction "
+            "claims at most one gold form, so a finding whose `span` reaches one "
+            "accepted phrase and whose `name` reaches another still scores a "
+            "single match. `either` is therefore never the sum of the two rows "
+            "above it — only never less than the larger of them.\n\n"
+            "**Read the `span` row as the conservative result.** It is the half "
+            "that can be verified against the note, since the not-in-note check "
+            "can only see `span`. A `name` match is the model asserting a "
+            "vocabulary fact that nothing in the note confirms.\n\n"
+            "**And read the `span` row at L1 as the closest thing to the old "
+            "method.** Exact matching on note wording only is what produced the "
+            "0.53 this work set out to improve; everything above it is what the "
+            "accept-set, the ladder and the second field bought."
+        )
 
     parts.append(
         "## Recall is never quotable on its own\n\n"

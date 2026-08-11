@@ -560,3 +560,74 @@ def test_the_report_never_calls_the_run_zero_shot(tmp_path):
     # description of the run.
     assert "zero-shot recall benchmark" not in text
     assert "zero-shot" not in text.split("One-shot, not zero-shot")[0]
+
+
+# --------------------------------------------------------------------------
+# The span/name split
+# --------------------------------------------------------------------------
+
+def test_span_and_name_recall_are_scored_separately(tmp_path):
+    """L1 pooled two different abilities. A model that only ever expands
+    abbreviations scores on `name` and zero on `span`, and the old single number
+    could not tell that apart from faithful copying."""
+    records, _ = _notes(tmp_path, [_row(evidence="HTN")])
+    # span matches the note wording; name matches the catalogue wording.
+    preds = _preds(1, [{"span": "HTN", "name": "essential primary hypertension"}])
+    by_field = score_run(records, preds, levels=LEVELS)["by_field"]
+
+    assert by_field["span"]["L1"]["forms_matched"] == 1     # the note phrase
+    assert by_field["name"]["L1"]["forms_matched"] == 1     # the catalogue phrase
+    # NOT 2. One prediction claims at most one gold form, so a single finding
+    # whose two fields each reach a different form still scores one match. The
+    # union is never the sum, and the report says so.
+    assert by_field["both"]["L1"]["forms_matched"] == 1
+
+
+def test_the_union_is_bounded_below_by_each_field_and_above_by_the_11_rule(tmp_path):
+    """`both` offers a superset of edges, so it can never score less than either
+    field alone -- but the 1:1 constraint keeps it under their sum."""
+    records, _ = _notes(tmp_path, [
+        _row(code="A1", evidence="HTN"),
+        _row(code="A2", evidence="sepsis", descr="Sepsis, unspecified",
+             text="The patient has HTN and sepsis."),
+    ])
+    preds = _preds(1, [{"span": "HTN", "name": "sepsis"}])
+    by_field = score_run(records, preds, levels=LEVELS)["by_field"]
+
+    span = by_field["span"]["L1"]["forms_matched"]
+    name = by_field["name"]["L1"]["forms_matched"]
+    both = by_field["both"]["L1"]["forms_matched"]
+    assert both >= max(span, name)
+    assert both <= span + name
+    assert both == 1          # one finding, one form, even reaching two
+
+
+def test_a_name_only_model_scores_nothing_on_span(tmp_path):
+    records, _ = _notes(tmp_path, [_row(evidence="HTN")])
+    preds = _preds(1, [{"span": "", "name": "essential primary hypertension"}])
+    by_field = score_run(records, preds, levels=LEVELS)["by_field"]
+
+    assert by_field["span"]["L1"]["row_recall"] == 0.0
+    assert by_field["name"]["L1"]["row_recall"] == 1.0
+
+
+def test_span_recall_never_exceeds_the_union(tmp_path):
+    records, _ = _notes(tmp_path, [
+        _row(code="A1", evidence="HTN"),
+        _row(code="A2", evidence="sepsis", descr="Sepsis, unspecified",
+             text="The patient has HTN and sepsis."),
+    ])
+    preds = _preds(1, [{"span": "HTN", "name": "hypertension"},
+                       {"span": "sepsis", "name": "sepsis"}])
+    by_field = score_run(records, preds, levels=LEVELS)["by_field"]
+    for level in LEVELS:
+        for field in ("span", "name"):
+            assert (by_field[field][level]["row_recall"]
+                    <= by_field["both"][level]["row_recall"])
+
+
+def test_the_report_shows_the_field_split_and_names_the_conservative_row(tmp_path):
+    text = _report(tmp_path)
+    assert "Which of the model's two fields did the work?" in text
+    assert "Read the `span` row as the conservative result" in text
+    assert "closest thing to the old" in text
