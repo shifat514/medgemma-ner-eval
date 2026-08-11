@@ -512,13 +512,21 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
     # rejected pairs removed. Reported ALONGSIDE the unadjudicated figure, never
     # in place of it: the gap between them is how much of the ladder's gain was
     # real, and that gap is the point of having a ladder at all.
-    from .recall_judge import load_rejected
+    from .recall_judge import load_rejected, unjudged_pairs
 
     rejected = load_rejected(run_dir)
     adjudicated = None
     if rejected:
         print(f"[info] L5 verdicts found: {len(rejected)} pairs rejected. "
               "Scoring an adjudicated ladder alongside.")
+        stale = unjudged_pairs(run_dir)
+        if stale:
+            total = sum(stale.values())
+            print(f"[warn] {total} accepted pairs have NO verdict "
+                  f"({', '.join(f'{k}:{v}' for k, v in sorted(stale.items()))}). "
+                  "They are kept by default, so the adjudicated rows below "
+                  "include unchecked matches. Re-run src.recall_judge to cover "
+                  "them.")
         adjudicated = score_run(records, preds, embedder=embedder,
                                 dice_min=dice_min, ratio_min=ratio_min,
                                 cosine_min=cosine_min, levels=levels,

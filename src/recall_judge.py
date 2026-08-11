@@ -353,3 +353,28 @@ def load_rejected(run_dir, levels=("L2", "L3", "L4")):
                     rejected.add((rec.get("note_id"), rec.get("span", ""),
                                   rec.get("name", ""), rec.get("gold_form", "")))
     return rejected
+
+
+def unjudged_pairs(run_dir, levels=("L2", "L3", "L4")):
+    """How many accepted pairs have no verdict, per level.
+
+    Loosening a threshold creates pairs the judge never saw. They are kept by
+    default -- an absent verdict is not a rejection -- so the adjudicated number
+    quietly starts including unchecked matches. Same shape as a stale prompt
+    cache: nothing errors, the figure just stops meaning what it says.
+    """
+    judged = set()
+    for path in glob.glob(os.path.join(run_dir, "verdicts_*.jsonl")):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        judged.add(pair_key(json.loads(line)))
+                    except json.JSONDecodeError:
+                        continue
+    out = {}
+    for level, pairs in load_pairs(run_dir, levels).items():
+        missing = sum(1 for p in pairs if pair_key(p) not in judged)
+        if missing:
+            out[level] = missing
+    return out
