@@ -571,6 +571,7 @@
     "oracle": true,
     "overlap_words": 80,
     "prompt_id": "5046b887",
+    "prompt_variant": "scoped",
     "run_tag": "medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_p5046b887",
     "thresholds": {
       "cosine_min": 0.6,

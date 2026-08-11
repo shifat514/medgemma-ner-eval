@@ -262,3 +262,32 @@ def score_run(records, preds, embedder=None, dice_min=DICE_MIN,
         # cost review attention and buy nothing.
         "new_pairs": new_pairs(records, preds, combined_ladders, levels),
     }
+
+
+def trailing_repeat_len(findings):
+    """How many findings at the END of a list repeat one seen earlier in it.
+
+    The signal that separates two very different truncations. A reply cut while
+    the model was still producing new findings has genuinely lost content, and
+    recall is understated. A reply cut while the model was replaying its own
+    list -- the observed failure was a verbatim replay of items 2-9 after item
+    16 -- has lost nothing, because everything past the cut was a duplicate the
+    pooling step would have collapsed anyway.
+
+    Without this the cap-hit count says "recall is understated" for both cases,
+    which is pessimistic in a way that would send someone hunting for findings
+    that were never missing.
+    """
+    seen, is_new = set(), []
+    for finding in findings:
+        key = (normalize_term(finding.get("span")),
+               normalize_term(finding.get("name")))
+        is_new.append(key not in seen)
+        seen.add(key)
+
+    trailing = 0
+    for new in reversed(is_new):
+        if new:
+            break
+        trailing += 1
+    return trailing

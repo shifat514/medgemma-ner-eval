@@ -1,7 +1,8 @@
 .PHONY: setup test smoke eval lint clean \
         mimic-sample mimic-smoke mimic-50 mimic-100 mimic-oracle mimic-check \
         mdace-sample mdace-oracle mdace-smoke mdace-50 mdace-run \
-        recall-oracle recall-smoke recall-run recall-rescore recall-judge \
+        recall-oracle recall-smoke recall-ab recall-compare recall-run \
+        recall-rescore recall-judge \
         recall-questions clean-recall-runs
 
 # Install dependencies via uv
@@ -109,6 +110,22 @@ recall-oracle:
 # path, which is where truncation and OOM live (needs a GPU + HF login).
 recall-smoke:
 	uv run python -m src.evaluate_recall --smoke 3 --dump-replies
+
+# The prompt A/B, ~25 min each. `scoped` names the categories to exclude and
+# grows a rule every time a run finds a new leak; `billable` replaces all of
+# them with the criterion that defines gold. They hash differently, so the two
+# runs cannot mix or replay each other.
+#
+# Read the volume rows before the recall row: a prompt that extracts more scores
+# higher recall almost regardless of quality.
+recall-ab:
+	uv run python -m src.evaluate_recall --smoke 3 --dump-replies --prompt scoped
+	uv run python -m src.evaluate_recall --smoke 3 --dump-replies --prompt billable
+	uv run python -m src.recall_compare
+
+# Compare the two most recent finished runs. No GPU, no re-scoring.
+recall-compare:
+	uv run python -m src.recall_compare
 
 # The benchmark: 24 notes / 82 chunks, ~1-1.5h on a T4. Resumable.
 recall-run:

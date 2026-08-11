@@ -43,6 +43,7 @@ and the scanner recovers them.
 
 import hashlib
 import json
+import os
 
 from .prompt_mdace import _item_lists, _iter_json_values, _norm_key
 
@@ -221,7 +222,7 @@ _EXAMPLE_OUTPUT = json.dumps({"findings": [
     {"span": "fracture of the left wrist", "name": "fracture of left wrist"},
 ]}, indent=None)
 
-_INSTRUCTION = (
+_SCOPED = (
     "Extract every DIAGNOSIS, PROCEDURE and INJURY from the clinical text "
     "below.\n"
     "\n"
@@ -288,7 +289,112 @@ _INSTRUCTION = (
 )
 
 
-def prompt_fingerprint():
+# --------------------------------------------------------------------------
+# Variant B — one positive criterion instead of four exclusions
+#
+# The scoped variant above grows by one rule every time a run finds a new leak:
+# medications, then vital signs, then lab values, then blood products, then bare
+# anatomy. That is a bug-fix log, not a specification, and there is no principle
+# in it that says when to stop — the list of things a clinical note contains and
+# a coder does not bill is effectively unbounded.
+#
+# This variant tests the alternative: replace all four exclusions with the
+# criterion that actually defines gold. MDACE evidence is the phrase a coder
+# highlighted to justify a code they submitted, so "would a coder assign a code
+# to this?" is not a proxy for the target, it IS the target. A vital sign has no
+# code. A lab value has no code. A drug's name has no code.
+#
+# The risk runs the wrong way, which is why this is measured rather than
+# assumed: recall is the metric, and a model with a weak grasp of billability
+# under-extracts. That is the one failure this benchmark punishes hardest. It is
+# worth testing now precisely because the scoped variant over-extracts by ~17x,
+# so there is room to lose volume before scarcity binds.
+#
+# The worked example stays in both variants and is NOT the thing under test. An
+# example costs O(1) — it demonstrates a boundary without enumerating it — while
+# rules cost O(leaks found). That distinction is the whole point of the
+# comparison.
+_BILLABLE = (
+    "You are reading this note the way a medical coder reads it.\n"
+    "\n"
+    "Extract every finding in the clinical text below that a medical coder "
+    "would assign a billing code to — an ICD-10 diagnosis code, or a CPT or "
+    "ICD-10-PCS procedure code.\n"
+    "\n"
+    "A finding qualifies if a coder could look it up in a code book:\n"
+    "  - a disease, diagnosis, symptom, or clinical finding "
+    "(e.g. sepsis, atrial fibrillation, chest pain, acute kidney injury)\n"
+    "  - a procedure performed on the patient "
+    "(e.g. colonoscopy, intubation, CABG, cardiac catheterization)\n"
+    "  - an injury, fracture, wound, burn, poisoning, or overdose "
+    "(e.g. fall, hip fracture, laceration)\n"
+    "\n"
+    "**If you cannot name the code a coder would assign to it, it is not a "
+    "finding.** Apply that test to every candidate before you write it down.\n"
+    "\n"
+    "Rules:\n"
+    "0. Return a JSON object with ONE key, \"findings\", whose value is a list "
+    "of objects. Each object has EXACTLY two keys:\n"
+    "     \"span\" - the phrase copied from the text, character for character, "
+    "exactly as written. Do not reword it, do not expand it, do not correct "
+    "its spelling.\n"
+    "     \"name\" - the standard clinical name for that same finding, spelled "
+    "out in full. Expand abbreviations here. If the text says \"HTN\", the "
+    "span is \"HTN\" and the name is \"hypertension\".\n"
+    "   If the phrase in the text is already the standard name, repeat it in "
+    "both fields.\n"
+    "1. Keep the span SHORT — the specific words naming the finding, not the "
+    "whole sentence around it. Most spans are one to three words.\n"
+    "2. Text in square brackets like [**Known lastname 1234**] or "
+    "[**2145-6-7**] is removed patient information. Never extract it and never "
+    "include it inside a span.\n"
+    "3. Extract from the WHOLE text, including narrative prose and past "
+    "medical history, not only from headed lists.\n"
+    "4. ONE entry per distinct finding. Do not repeat a finding you have "
+    "already listed, even if the text mentions it again.\n"
+    "5. When you have listed every distinct finding once, close the JSON and "
+    "STOP. Do not start the list again from the beginning.\n"
+    "6. Return ONLY the JSON object — no prose, no markdown fences, no "
+    "explanation.\n"
+    "\n"
+    "Example input:\n"
+    f"{_EXAMPLE_INPUT}\n"
+    "\n"
+    "Example output:\n"
+    f"{_EXAMPLE_OUTPUT}\n"
+    "\n"
+    "The example input mentions aspirin, a tobacco history, SBPs and a "
+    "hematocrit. None of them appears in the output, because none of them is "
+    "something a coder assigns a code to. Note also that the output lists each "
+    "finding exactly once and then stops.\n"
+    "\n"
+    'If there are genuinely no findings, return {"findings": []}.\n'
+    "\n"
+    "Now do the same for this text.\n"
+    "Text:\n"
+)
+
+# The two variants under comparison. `scoped` is what the first smoke run used;
+# `billable` is the experiment. The run tag carries the prompt hash, so the two
+# land in separate run directories and neither can replay the other's numbers.
+VARIANTS = {"scoped": _SCOPED, "billable": _BILLABLE}
+
+DEFAULT_VARIANT = os.environ.get("RECALL_PROMPT", "scoped")
+
+
+def instruction(variant=None):
+    """The instruction text for `variant`, defaulting to RECALL_PROMPT."""
+    name = variant or DEFAULT_VARIANT
+    try:
+        return VARIANTS[name]
+    except KeyError:
+        raise ValueError(
+            f"unknown prompt variant {name!r}; expected one of "
+            f"{sorted(VARIANTS)}"
+        ) from None
+
+
+def prompt_fingerprint(variant=None):
     """Short hash of the prompt, for the run-directory name.
 
     The resume cache is keyed on the run directory, and every other input that
@@ -297,18 +403,19 @@ def prompt_fingerprint():
     it and re-running silently replayed the old prompt's results: "cached 24, to
     run 0", numbers from the old prompt, no model call made, no error.
     """
-    return hashlib.sha256((_SYSTEM + _INSTRUCTION).encode("utf-8")).hexdigest()[:8]
+    body = _SYSTEM + instruction(variant)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:8]
 
 
-def build_prompt(chunk_text):
+def build_prompt(chunk_text, variant=None):
     """The user-turn text for one note chunk."""
-    return _INSTRUCTION + chunk_text
+    return instruction(variant) + chunk_text
 
 
-def build_messages(chunk_text):
+def build_messages(chunk_text, variant=None):
     """Text-only chat messages in MedGemma's expected structure."""
     return [
         {"role": "system", "content": [{"type": "text", "text": _SYSTEM}]},
         {"role": "user",
-         "content": [{"type": "text", "text": build_prompt(chunk_text)}]},
+         "content": [{"type": "text", "text": build_prompt(chunk_text, variant)}]},
     ]

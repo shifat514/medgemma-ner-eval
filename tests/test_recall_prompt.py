@@ -310,3 +310,63 @@ def test_prompt_tells_the_model_to_stop_rather_than_restart():
     """The observed failure was a verbatim replay of items 2-9 after item 16 --
     greedy degeneration on a long list, which ran into the token cap."""
     assert "Do not start the list again from the beginning" in build_prompt("")
+
+
+# --------------------------------------------------------------------------
+# The two variants under comparison
+#
+# `scoped` names the categories to exclude and grows by one rule every time a
+# run finds a new leak. `billable` replaces all of them with the criterion that
+# actually defines gold. Which one is better is an empirical question the smoke
+# runs answer; what these tests pin is that the comparison is clean.
+# --------------------------------------------------------------------------
+
+def test_billable_carries_no_exclusion_rules():
+    """The whole point of the variant: one positive criterion, zero blacklists."""
+    assert "Do NOT" not in build_prompt("", "billable")
+    assert "Do NOT" in build_prompt("", "scoped")
+
+
+def test_billable_states_the_criterion_that_defines_gold():
+    """MDACE evidence IS the phrase a coder highlighted to justify a submitted
+    code, so this is the target rather than a proxy for it."""
+    prompt = build_prompt("", "billable")
+    assert "medical coder would assign a billing code to" in prompt
+    assert "cannot name the code a coder would assign" in prompt
+
+
+def test_both_variants_keep_the_worked_example():
+    """An example costs O(1) and demonstrates a boundary; rules cost O(leaks
+    found) and enumerate one. The example is not the thing under test."""
+    for variant in ("scoped", "billable"):
+        prompt = build_prompt("", variant)
+        assert "SBPs" in prompt and "hematocrit" in prompt
+        assert '{"span": "HTN", "name": "hypertension"}' in prompt
+
+
+def test_both_variants_ask_for_the_same_output_shape():
+    """Otherwise the comparison measures the parser, not the prompt."""
+    outputs = []
+    for variant in ("scoped", "billable"):
+        prompt = build_prompt("", variant)
+        start = prompt.index('{"findings"')
+        outputs.append(prompt[start:prompt.index("\n", start)])
+    assert outputs[0] == outputs[1]
+
+
+def test_the_variants_hash_differently_so_runs_cannot_mix():
+    """The run directory is keyed on this. A shared hash would let one variant
+    replay the other's cached numbers with no error."""
+    assert prompt_fingerprint("scoped") != prompt_fingerprint("billable")
+
+
+def test_an_unknown_variant_is_refused_by_name():
+    with pytest.raises(ValueError, match="unknown prompt variant"):
+        build_prompt("", "whatever")
+
+
+def test_the_default_variant_is_stable():
+    from src.prompt_recall import DEFAULT_VARIANT
+
+    assert build_prompt("") == build_prompt("", DEFAULT_VARIANT)
+    assert prompt_fingerprint() == prompt_fingerprint(DEFAULT_VARIANT)

@@ -364,3 +364,31 @@ def test_a_truncated_chunk_that_parsed_cleanly_is_still_flagged_as_lost():
     assert st["n_cap_hits"] == 1
     assert st["n_chunks_salvaged"] == 0        # nothing needed salvaging
     assert st["n_chunks_cut_but_parsed"] == 1  # ...but content was still lost
+
+
+def test_a_cut_during_a_replay_is_not_counted_as_lost_content():
+    """The observed failure: sixteen genuine findings, then a verbatim replay of
+    items 2-9, cut mid-replay. Nothing was lost -- pooling collapses those
+    duplicates anyway -- so calling it "recall is understated" sends someone
+    hunting for findings that were never missing."""
+    from src.evaluate_recall import predict_note
+    from src.recall_scoring import trailing_repeat_len
+
+    genuine = [{"span": f"finding {i}", "name": f"name {i}"} for i in range(16)]
+    assert trailing_repeat_len(genuine) == 0
+    assert trailing_repeat_len(genuine + genuine[1:9]) == 8
+
+    looping = json.dumps({"findings": genuine + genuine[1:9]})
+    record = {"note_id": 1, "text": "x", "rows": [], "forms": {}}
+    _f, st = predict_note(None, record, run_fn=lambda p, c: looping,
+                          count_fn=lambda p, r: 1024,
+                          gen_config={"max_new_tokens": 1024})
+    assert st["n_cap_hits"] == 1
+    assert st["n_cap_hits_while_repeating"] == 1
+
+    still_producing = json.dumps({"findings": genuine})
+    _f, st = predict_note(None, record, run_fn=lambda p, c: still_producing,
+                          count_fn=lambda p, r: 1024,
+                          gen_config={"max_new_tokens": 1024})
+    assert st["n_cap_hits"] == 1
+    assert st["n_cap_hits_while_repeating"] == 0

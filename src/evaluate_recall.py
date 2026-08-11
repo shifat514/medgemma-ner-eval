@@ -45,7 +45,13 @@ import os
 
 from .chunking import chunk_windows, tokenize_with_spans
 from .datasets.mdace_recall import load, normalize_term
-from .prompt_recall import build_messages, parse_findings_diag, prompt_fingerprint
+from .prompt_recall import (
+    DEFAULT_VARIANT,
+    VARIANTS,
+    build_messages,
+    parse_findings_diag,
+    prompt_fingerprint,
+)
 from .recall_config import (
     CAP_MARGIN,
     CHUNK_WORDS,
@@ -63,7 +69,7 @@ from .recall_config import (
     SAMPLE_100_FILE,
 )
 from .recall_matching import Embedder
-from .recall_scoring import dedupe_findings, score_run
+from .recall_scoring import dedupe_findings, score_run, trailing_repeat_len
 from .report_recall import write_report
 
 
@@ -122,7 +128,8 @@ def make_oracle_run_fn(record):
 
 def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
                  overlap_words=OVERLAP_WORDS, run_fn=None, count_fn=None,
-                 gen_config=None, diag_sink=None, reply_sink=None):
+                 gen_config=None, diag_sink=None, reply_sink=None,
+                 variant=None):
     """Predict the finding list for one note. Returns ``(findings, stats)``.
 
     Any inference or parse failure degrades that chunk to zero findings rather
@@ -133,7 +140,7 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
         from .model import run_messages
 
         def run_fn(p, chunk_text):
-            return run_messages(p, build_messages(chunk_text),
+            return run_messages(p, build_messages(chunk_text, variant),
                                 gen_config=gen_config, default_gen=GEN_CONFIG)
     if count_fn is None:
         from .model import count_tokens
@@ -167,7 +174,7 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
         # stays "json" and n_chunks_salvaged never fires. Without this counter
         # the diagnostics read as though nothing was lost, when in fact
         # everything after each cut is gone.
-        "n_chunks_cut_but_parsed": 0,
+        "n_chunks_cut_but_parsed": 0, "n_cap_hits_while_repeating": 0,
     }
 
     collected = []
@@ -228,6 +235,14 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
                 st["n_cap_hits"] += 1
                 if parsed and not pdiag.get("n_salvaged"):
                     st["n_chunks_cut_but_parsed"] += 1
+                # Two very different truncations. Cut while still producing new
+                # findings means content was genuinely lost and recall is
+                # understated. Cut while replaying its own list means nothing
+                # was lost — pooling would have collapsed those duplicates
+                # anyway. Counting them together made every cap hit look like
+                # damage.
+                if trailing_repeat_len(parsed):
+                    st["n_cap_hits_while_repeating"] += 1
 
         st["n_mentions"] += len(parsed)
         collected.extend(parsed)
@@ -279,7 +294,8 @@ def _load_findings(path):
 # has no value for them, and summing a missing key as 0 would report "no
 # repetition" for a run that was never measured for it — the same shape of lie
 # as a stale prompt replaying old numbers.
-_LATE_COUNTERS = ("n_items_dup_in_chunk", "n_chunks_cut_but_parsed")
+_LATE_COUNTERS = ("n_items_dup_in_chunk", "n_chunks_cut_but_parsed",
+                  "n_cap_hits_while_repeating")
 
 
 def _print_diagnostics(per_note, diag_sink):
@@ -308,8 +324,11 @@ def _print_diagnostics(per_note, diag_sink):
     print(f"    generation hit max_new_tokens     {caps:,}"
           f"  ({100.0 * caps / chunks:.1f}%)"
           + ("   <- recall is UNDERSTATED" if caps else ""))
-    print(f"      of those, parsed cleanly anyway {tot('n_chunks_cut_but_parsed'):,}"
-          + ("   <- everything past each cut is still lost" if caps else ""))
+    looping = tot("n_cap_hits_while_repeating")
+    print(f"      cut while REPLAYING its own list {looping:,}"
+          + ("   <- nothing lost; pooling drops those" if caps else ""))
+    print(f"      cut while producing NEW findings {caps - looping:,}"
+          + ("   <- this is the part that understates recall" if caps else ""))
     print(f"    inference/parse exception         {tot('n_chunk_failures'):,}")
     print(f"    nothing parsed, prefix salvaged   {tot('n_chunks_salvaged'):,}"
           f"  ({tot('n_items_salvaged'):,} findings recovered)")
@@ -336,7 +355,8 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
              resume=True, results_dir=None, output_dir=None, load_model=True,
              oracle=False, dump_replies=False, max_new_tokens=None,
              dice_min=DICE_MIN, ratio_min=RATIO_MIN, cosine_min=COSINE_MIN,
-             embed=True, embed_model=None, score_only=False):
+             embed=True, embed_model=None, score_only=False,
+             prompt_variant=None):
     model_id = model_id or MODEL_ID
     model_name = model_name or MODEL_NAME
     if oracle:
@@ -366,7 +386,7 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
         label = f"oracle_{label}"
 
     tag = run_tag(chunk_words, overlap_words, model_name, cap,
-                  prompt_id=prompt_fingerprint())
+                  prompt_id=prompt_fingerprint(prompt_variant))
     run_dir = os.path.join(output_dir, tag)
     os.makedirs(run_dir, exist_ok=True)
     per_note_path = os.path.join(run_dir, "per_note.jsonl")
@@ -389,7 +409,9 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
           f"of {sum(r.get('n_chunks', 0) for r in records)}")
     print(f"chunking: {chunk_words} words / {overlap_words} overlap")
     print(f"model:    {model_id}  4bit={LOAD_IN_4BIT}  max_new_tokens={cap}")
-    print(f"prompt:   {prompt_fingerprint()}  (a prompt edit starts a fresh cache)")
+    print(f"prompt:   {prompt_variant or DEFAULT_VARIANT} "
+          f"{prompt_fingerprint(prompt_variant)}  "
+          "(a prompt edit starts a fresh cache)")
     print(f"run dir:  {run_dir}")
 
     pipe = None
@@ -411,6 +433,7 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
             pipe, record, chunk_words=chunk_words, overlap_words=overlap_words,
             run_fn=run_fn, count_fn=(lambda p, r: None) if oracle else None,
             gen_config=gen_config, diag_sink=diag_sink, reply_sink=reply_sink,
+            variant=prompt_variant,
         )
 
         # Findings first, then counts: the counts file is the resume marker, so
@@ -482,7 +505,8 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
         "model_name": model_name,
         "load_in_4bit": LOAD_IN_4BIT,
         "max_new_tokens": cap,
-        "prompt_id": prompt_fingerprint(),
+        "prompt_id": prompt_fingerprint(prompt_variant),
+        "prompt_variant": prompt_variant or DEFAULT_VARIANT,
         "chunk_words": chunk_words,
         "overlap_words": overlap_words,
         "n_notes_scored": len(records) - len(missing),
@@ -579,6 +603,11 @@ def main():
     parser.add_argument("--smoke", type=int, default=None,
                         help="quick check on the N longest notes — the "
                              "multi-chunk path, where truncation and OOM live")
+    parser.add_argument("--prompt", default=None, choices=sorted(VARIANTS),
+                        help="which prompt to run. 'scoped' names the "
+                             "categories to exclude; 'billable' replaces "
+                             "them with one positive criterion. They hash "
+                             "differently, so the runs cannot mix")
     parser.add_argument("--sample-file", default=None)
     parser.add_argument("--chunk-words", type=int, default=CHUNK_WORDS)
     parser.add_argument("--overlap-words", type=int, default=OVERLAP_WORDS)
@@ -617,6 +646,7 @@ def main():
         dice_min=args.dice_min, ratio_min=args.ratio_min,
         cosine_min=args.cosine_min, embed=not args.no_embed,
         embed_model=args.embed_model, score_only=args.score_only,
+        prompt_variant=args.prompt,
     )
 
 
