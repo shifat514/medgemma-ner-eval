@@ -5,11 +5,13 @@ Companion to `medgemma-recall-benchmark-plan.pdf`, which is Ehtesham Bhai's copy
 deliberately carries no project mechanics. This file holds everything that was cut
 from it, plus the reasoning behind the cuts.
 
-Status: **built, L1-L5 in place, no GPU run yet.** The harness check passes and
-the ladder is verified end to end on synthetic predictions. What remains is the
-82-chunk run itself. See "What was built" at the bottom, which also records the
-one measurement that revised the plan: L4 does not do what this document
-assumed it would.
+Status: **complete and reported.** The 24-note run was executed on 2026-08-13 and
+the results were sent: 78 of 100 billed phrases, model alone. See "What was
+built" at the bottom, which records the one measurement that revised the plan —
+L4 does not do what this document assumed it would.
+
+**This phase is closed. The precision phase continues in
+`precision-plan-internal.md`, and that is where the outstanding work is.**
 
 ---
 
@@ -286,6 +288,14 @@ so the 0.53 starting point stays reproducible.
 | `src/evaluate_recall.py` | the runner |
 | `src/recall_judge.py` | L5 |
 | `colab_runner_recall.ipynb` | the T4 runner |
+
+Added during the precision phase, after this document was written:
+
+| module | what it is |
+|---|---|
+| `src/recall_failures.py` | false positives by note section, misses by cause |
+| `src/recall_filter.py` | the second-pass billability filter |
+| `src/recall_compare.py` | two finished runs side by side |
 
 131 new tests, 470 in the suite, all passing on CPU with no model download.
 `make recall-oracle` passes: every source 1.0000 at L1, zero false positives on

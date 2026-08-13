@@ -152,23 +152,78 @@ Two things to be clear about:
   *evidence* is found. Code recall of **77% (70 of 91)** is the ceiling on the
   downstream term → ICD lookup, since you cannot retrieve a code whose evidence
   was never extracted. Whether MedGemma picks the *right* ICD code is untested.
-- **SNOMED is its weakest column** — 47% against 76% on note wording. If SNOMED
-  mapping is a goal, that is where the gap sits.
+- **SNOMED reads as its weakest column at 47%, and that number is a floor.**
+  This file ships at most 3 SNOMED terms per code against 1,894 mapped — 157 of
+  them, or **8%**. One row maps to 64 concepts and ships 3. A real lookup has an
+  order of magnitude more terms to match against, so SNOMED is probably stronger
+  than 47% suggests.
 
-Suggested order: exhaust the five items below first, since they are hours rather
-than days. Then fine-tune on the full 1,074-note corpus with **volume**, not
-recall, as the target metric.
+Suggested order: exhaust the items below first, since they are hours rather than
+days. Then fine-tune on the full 1,074-note corpus with **volume**, not recall,
+as the target metric.
+
+## The second-pass filter — what actually fixed precision
+
+Extraction and filtering were one call, and the model is good at the first and
+bad at the second. So they were split: after extraction, each finding gets its
+own call asking **"would a coder assign a billing code to this?"** and the noes
+are dropped.
+
+| | model alone | **+ filter** |
+|---|---|---|
+| findings per note | 51.0 | **21.5** |
+| precision | 0.1135 | **0.2311** |
+| best precision possible | 0.2571 | **0.5010** |
+| recall | 0.7800 | **0.6700** |
+
+It dropped 710 findings. **690 were false positives and 20 were real matches, so
+97.2% of the dropping was correct.** Those 20 cost 11 of the 100 phrases, because
+a row survives if it keeps any other matching form.
+
+**The question was bare — no hints, no list of categories to avoid.** So
+MedGemma already knows what is billable; it simply does not apply that knowledge
+while extracting. That is why splitting into two steps worked where two prompt
+rewrites had not.
+
+Recall falls. That is the price of the precision, and both columns are reported
+so the operating point is a choice rather than a default.
+
+## Section filtering — measured, and ruled out
+
+Dropping irrelevant sections looked like the obvious lever and is not. The false
+positives are spread thin: the largest single section holds 8% of them, half sit
+in a long tail, and **the sections producing the most false positives are the
+same ones holding the most gold** — Brief Hospital Course has 19 of the 100 gold
+phrases and 94 false positives. Applied on top of the filter it bought +0.6
+precision points and cost one answer.
+
+One measurement worth keeping from it: stripping medications, labs and admin
+sections *before* the model reads them removes 18% of the text at **zero gold
+cost**. Social History is deliberately kept — it holds 3 of the 100 phrases, the
+smoking and alcohol status codes.
 
 ## Before fine-tuning — what is still untried
 
-1. **Smaller windows, 400 → 250 words.** Directly targets the 7 truncated
-   chunks. Cheapest remaining recall gain. ~45 min GPU.
-2. **Diagnose the 22 misses.** Nobody yet knows whether they are truncation, the
-   model never mentioning them, or matching still too strict. Free, and it
-   decides whether (1) is worth the GPU at all.
-3. **Volume control.** 12:1 has had no attempt made on it.
-4. **A "would a coder bill this?" prompt.** Cut invented spans 9x on a 2-note
-   test (9.2% → 1.0%) at equal recall. Untested at scale.
-5. **An independent L5 judge** instead of the model grading itself.
+1. **Smaller windows, 400 → 250 words.** Targets the 21 chunks that ran out of
+   output room, 7 of which were cut while still producing findings.
+2. **A cap on findings per call.** 413 of 1,706 emitted items were repeats
+   *within a single reply*, and that looping is what hits the token cap. Built
+   and untested.
+3. **Showing the filter the surrounding sentence.** Its 20 mistakes cluster on
+   procedure codes, where the billed evidence is a substance or an observation
+   rather than a diagnosis — `platelets` for a platelet transfusion, `sinus
+   rhythm` for an ECG. A bare phrase cannot be judged; a sentence can.
+4. **An independent judge** instead of MedGemma grading itself.
 
-None of these require training. Fine-tuning is the step after they run out.
+None of these require training.
+
+## The ceiling, and why it matters
+
+**Even a perfect filter over the current findings tops out near 0.55 precision.**
+That is arithmetic: the model still emits ~17 findings per note against ~4
+billed, and precision cannot exceed the ratio of possible answers to produced
+answers.
+
+So the items above are worth a few points each. Closing the remaining gap needs
+the model to extract less and better, which is fine-tuning. Everything short of
+that is cleanup on a measurement that is already defensible.
