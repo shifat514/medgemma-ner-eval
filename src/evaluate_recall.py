@@ -175,6 +175,11 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
         # the diagnostics read as though nothing was lost, when in fact
         # everything after each cut is gone.
         "n_chunks_cut_but_parsed": 0, "n_cap_hits_while_repeating": 0,
+        # WHICH windows ran out of output space, as [start, end] token indices.
+        # n_cap_hits says how many; it cannot say whether a specific missed gold
+        # phrase sat inside one of them, which is the question the failure
+        # analysis needs. Integers only, so per_note.jsonl stays PHI-free.
+        "cap_hit_windows": [],
     }
 
     collected = []
@@ -233,6 +238,7 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
             n_gen = count_fn(pipe, reply)
             if n_gen is not None and n_gen >= cap - CAP_MARGIN:
                 st["n_cap_hits"] += 1
+                st["cap_hit_windows"].append([start, end])
                 if parsed and not pdiag.get("n_salvaged"):
                     st["n_chunks_cut_but_parsed"] += 1
                 # Two very different truncations. Cut while still producing new
