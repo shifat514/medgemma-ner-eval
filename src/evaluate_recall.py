@@ -121,8 +121,12 @@ def make_oracle_run_fn(record):
                 break
 
     def run(pipe, chunk_text, char_lo=0, char_hi=None):
-        hi = len(record["text"]) if char_hi is None else char_hi
-        window = record["text"][char_lo:hi]
+        # The window offsets index model_text, because that is what got chunked.
+        # Slicing record["text"] with them was off by every stripped section --
+        # the harness check caught it the moment section stripping was added.
+        source = record.get("model_text") or record["text"]
+        hi = len(source) if char_hi is None else char_hi
+        window = source[char_lo:hi]
         return json.dumps({"findings": [
             {"span": span, "name": form}
             for form, span in sorted(span_for.items()) if span in window

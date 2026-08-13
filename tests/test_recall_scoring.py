@@ -704,3 +704,23 @@ def test_the_report_warns_that_per_source_precision_is_not_quality(tmp_path):
     assert "Precision, recall and F1 per source" in text
     assert "diagnostics, not as quality" in text
     assert "best precision possible" in text
+
+
+def test_the_oracle_windows_index_the_text_the_model_reads(tmp_path):
+    """Section stripping chunks `model_text` while the oracle sliced `text`,
+    so every window was off by the stripped sections and the harness check
+    failed. It failing was correct; it silently passing would not have been."""
+    from src.evaluate_recall import run_eval
+
+    rows = [_row(evidence="HTN",
+                 text="Chief Complaint:\nHTN.\n\nAllergies:\nNKDA\n")]
+    path = tmp_path / "sample.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+
+    for drop in (False, True):
+        result = run_eval(sample_file=str(path), oracle=True, embed=False,
+                          results_dir=str(tmp_path / "results"),
+                          output_dir=str(tmp_path / f"out{drop}"),
+                          drop_sections=drop)
+        m = result["by_source"]["combined"][result["levels"][0]]
+        assert m["row_recall"] == 1.0, f"drop_sections={drop}"
