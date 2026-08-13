@@ -376,9 +376,24 @@ def run(run_dir=None, sample_file=None, variant=None, judge="medgemma",
 
     print(f"run dir:  {run_dir}")
     print(f"variant:  {variant}")
-    print(f"findings: {sum(len(v) for v in raw.values()):,}")
+    n_findings = sum(len(v) for v in raw.values())
+    print(f"notes:    {len(raw)}")
+    print(f"findings: {n_findings:,}")
+    if len(raw) < 24:
+        print(f"WARNING: only {len(raw)} notes. This is a smoke run, not the "
+              "24-note benchmark.")
     if prior:
         print(f"resumed:  {len(prior):,} verdicts already on disk")
+
+    if judge == "medgemma":
+        # Two warnings per call about processor kwargs and max_length, which at
+        # 1,225 calls is 2,450 lines of noise that buries the progress counter.
+        # The warnings are about defaults we deliberately override.
+        try:
+            from transformers.utils import logging as hf_logging
+            hf_logging.set_verbosity_error()
+        except ImportError:
+            pass
 
     if judge == "none":
         def run_fn(messages):
@@ -451,16 +466,28 @@ def run(run_dir=None, sample_file=None, variant=None, judge="medgemma",
 
 
 def _latest_run_dir():
+    """The run with the MOST notes, not the newest.
+
+    Newest-by-mtime picked a 2-note smoke run over the 24-note benchmark twice,
+    and both times produced a plausible-looking result for the wrong thing.
+    """
     import glob
 
-    dirs = [d for d in glob.glob(os.path.join(OUTPUT_DIR, "*"))
-            if os.path.isdir(d)
-            and os.path.exists(os.path.join(d, "findings.jsonl"))]
-    if not dirs:
+    runs = []
+    for d in glob.glob(os.path.join(OUTPUT_DIR, "*")):
+        f = os.path.join(d, "per_note.jsonl")
+        if os.path.isdir(d) and os.path.exists(
+                os.path.join(d, "findings.jsonl")):
+            n = 0
+            if os.path.exists(f):
+                with open(f, encoding="utf-8") as fh:
+                    n = sum(1 for line in fh if line.strip())
+            runs.append((n, d))
+    if not runs:
         raise FileNotFoundError(
             f"no finished run under {OUTPUT_DIR}. Run "
             "`python -m src.evaluate_recall` first.")
-    return max(dirs, key=os.path.getmtime)
+    return max(runs)[1]
 
 
 def main():
