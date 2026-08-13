@@ -386,3 +386,21 @@ def test_the_docstring_does_not_claim_an_exclusion_the_default_lacks():
     scoped, billable = mod.VARIANTS["scoped"], mod.VARIANTS["billable"]
     assert "medications" in scoped
     assert "medications" not in billable
+
+
+def test_the_capped_variant_limits_the_list_and_nothing_else():
+    """The untried lever: 413 of 1,706 emitted items were repeats within a
+    single reply, and that looping is what hit the token cap 21 times."""
+    billable = build_prompt("", "billable")
+    capped = build_prompt("", "billable_capped")
+
+    assert "AT MOST 25 findings" in capped
+    assert "AT MOST 25" not in billable
+    # 25 leaves the measured median of 17 untouched and cuts only the tail
+    assert capped.replace(
+        "4b. Return AT MOST 25 findings. If the text contains more, return the "
+        "25 most specific ones and stop.\n", "") == billable
+
+
+def test_the_capped_variant_hashes_separately():
+    assert prompt_fingerprint("billable_capped") != prompt_fingerprint("billable")

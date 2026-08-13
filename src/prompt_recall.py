@@ -390,7 +390,25 @@ _BILLABLE = (
 # The two variants under comparison. `scoped` is what the first smoke run used;
 # `billable` is the experiment. The run tag carries the prompt hash, so the two
 # land in separate run directories and neither can replay the other's numbers.
-VARIANTS = {"scoped": _SCOPED, "billable": _BILLABLE}
+# `billable` plus a hard limit on how many findings one call may return. The
+# untried lever from the plan, and the direct attack on the repetition loop:
+# 413 of 1,706 emitted items on the 24-note run were repeats WITHIN a single
+# reply, and that looping is what put 21 of 82 chunks into the token cap.
+#
+# 25 is chosen against the measured distribution, not picked: the median chunk
+# returned 17 findings and the maximum was 84. A cap of 25 leaves the median
+# untouched and cuts only the tail, which is where the loop lives.
+_BILLABLE_CAPPED = _BILLABLE.replace(
+    "4. ONE entry per distinct finding. Do not repeat a finding you have "
+    "already listed, even if the text mentions it again.\n",
+    "4. ONE entry per distinct finding. Do not repeat a finding you have "
+    "already listed, even if the text mentions it again.\n"
+    "4b. Return AT MOST 25 findings. If the text contains more, return the 25 "
+    "most specific ones and stop.\n",
+)
+
+VARIANTS = {"scoped": _SCOPED, "billable": _BILLABLE,
+            "billable_capped": _BILLABLE_CAPPED}
 
 # `billable` is the default on measurement, not taste. Head to head on the
 # same 17 chunks it cut hallucinated spans from 9.22% to 1.02% (95% CIs

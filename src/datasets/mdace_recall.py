@@ -36,7 +36,14 @@ import json
 import os
 import re
 
-from ..recall_config import CHUNK_WORDS, OVERLAP_WORDS, SOURCES
+from ..recall_config import (
+    CHUNK_WORDS,
+    DROP_SECTIONS,
+    OVERLAP_WORDS,
+    SOURCES,
+)
+
+_HEADER = re.compile(r"^[ \t]*([A-Z][A-Za-z /\-]{3,40}):", re.MULTILINE)
 
 # Lowercase, every run of non-alphanumerics collapsed to one space. IDENTICAL to
 # datasets.mdace.normalize_term by design: the 0.53 reference number from the
@@ -100,6 +107,39 @@ def row_accept_set(row):
     return {norm: sorted(src) for norm, src in forms.items()}
 
 
+def blocked_section(name, blocklist=DROP_SECTIONS):
+    """True when `name` is a section to strip from the model's input."""
+    if not name:
+        return False
+    low = " ".join(name.lower().replace("-", " ").split())
+    return any(low == b or low.startswith(b) for b in blocklist)
+
+
+def strip_sections(text, blocklist=DROP_SECTIONS):
+    """Remove blocklisted sections from the note. Returns ``(text, n_removed)``.
+
+    Applied BEFORE chunking, so the model never reads them and its output budget
+    is not spent describing them. The gold offsets in the file index the ORIGINAL
+    text, so this is only ever used for what the model sees — never for locating
+    evidence, which continues to use the untouched note.
+    """
+    marks = [(m.start(), m.group(1).strip()) for m in _HEADER.finditer(text)]
+    if not marks:
+        return text, 0
+    marks.append((len(text), None))
+    keep, removed = [], 0
+    if marks[0][0] > 0:
+        keep.append(text[:marks[0][0]])
+    for i in range(len(marks) - 1):
+        start, name = marks[i]
+        end = marks[i + 1][0]
+        if blocked_section(name, blocklist):
+            removed += 1
+            continue
+        keep.append(text[start:end])
+    return "".join(keep), removed
+
+
 def n_chunks(text, chunk_words=CHUNK_WORDS, overlap_words=OVERLAP_WORDS):
     """Model calls this note will cost."""
     from ..chunking import chunk_windows, tokenize_with_spans
@@ -108,7 +148,8 @@ def n_chunks(text, chunk_words=CHUNK_WORDS, overlap_words=OVERLAP_WORDS):
     return len(chunk_windows(len(tokens), chunk_words, overlap_words))
 
 
-def build_notes(path, chunk_words=CHUNK_WORDS, overlap_words=OVERLAP_WORDS):
+def build_notes(path, chunk_words=CHUNK_WORDS, overlap_words=OVERLAP_WORDS,
+                drop_sections=False):
     """Group the file into per-note records. Returns ``(records, stats)``.
 
     Each record carries:
@@ -156,12 +197,21 @@ def build_notes(path, chunk_words=CHUNK_WORDS, overlap_words=OVERLAP_WORDS):
                 slot["rows"].add(idx)
                 slot["codes"].add(code_key)
 
+        # Two texts, and the split is load-bearing. `text` stays untouched
+        # because every gold offset in the file indexes it and the not-in-note
+        # check must see the whole note. `model_text` is what gets chunked and
+        # sent, so stripping a section removes it from the model's input without
+        # moving a single gold offset.
+        model_text, n_stripped = (strip_sections(text) if drop_sections
+                                  else (text, 0))
         records.append({
             "note_id": note_id,
             "hadm_id": note_rows[0][1].get("hadm_id"),
             "chart_type": note_rows[0][1].get("chart_type"),
             "text": text,
-            "n_chunks": n_chunks(text, chunk_words, overlap_words),
+            "model_text": model_text,
+            "n_sections_stripped": n_stripped,
+            "n_chunks": n_chunks(model_text, chunk_words, overlap_words),
             "rows": entries,
             "forms": {norm: {"sources": sorted(v["sources"]),
                              "rows": sorted(v["rows"]),
@@ -227,6 +277,10 @@ def corpus_stats(records, rows):
         "n_rows": len(rows),
         "n_notes": len(records),
         "n_chunks": sum(r["n_chunks"] for r in records),
+        "n_words_full": sum(len(r["text"].split()) for r in records),
+        "n_words_sent": sum(len(r["model_text"].split()) for r in records),
+        "n_sections_stripped": sum(r.get("n_sections_stripped", 0)
+                                   for r in records),
         "n_codes": len({(r["note_id"], e["code_key"])
                         for r in records for e in r["rows"]}),
         "accept_median": median,
@@ -275,7 +329,8 @@ def snomed_coverage(records, rows):
     }
 
 
-def load(path=None, chunk_words=CHUNK_WORDS, overlap_words=OVERLAP_WORDS):
+def load(path=None, chunk_words=CHUNK_WORDS, overlap_words=OVERLAP_WORDS,
+         drop_sections=False):
     """Load the benchmark input. Raises a pointed error if the file is absent."""
     from ..recall_config import S3_SAMPLE_100_FILE, SAMPLE_100_FILE
 
@@ -287,4 +342,4 @@ def load(path=None, chunk_words=CHUNK_WORDS, overlap_words=OVERLAP_WORDS):
             f"repo. Mirror: {S3_SAMPLE_100_FILE}\n"
             f"Set RECALL_SAMPLE_FILE to point at your copy."
         )
-    return build_notes(path, chunk_words, overlap_words)
+    return build_notes(path, chunk_words, overlap_words, drop_sections)

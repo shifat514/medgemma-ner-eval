@@ -257,3 +257,55 @@ def test_every_evidence_phrase_is_a_literal_substring_of_its_note():
     for record in records:
         for entry in record["rows"]:
             assert entry["evidence_text"] in record["text"]
+
+
+# --------------------------------------------------------------------------
+# Input section filtering — what the model reads vs what gold indexes
+# --------------------------------------------------------------------------
+
+def test_stripping_removes_the_section_and_keeps_the_rest():
+    from src.datasets.mdace_recall import strip_sections
+
+    text = ("Chief Complaint:\nSepsis.\n\n"
+            "Discharge Medications:\n1. Senna\n\n"
+            "Brief Hospital Course:\nTreated.\n")
+    out, n = strip_sections(text)
+    assert n == 1
+    assert "Senna" not in out
+    assert "Sepsis" in out and "Treated" in out
+
+
+def test_social_history_is_never_stripped(tmp_path):
+    """It holds 3 of the 100 gold phrases -- the smoking and alcohol status
+    codes. Dropping it looked obviously safe and was not."""
+    from src.datasets.mdace_recall import blocked_section, strip_sections
+
+    assert not blocked_section("Social History")
+    assert not blocked_section("Discharge Instructions")
+    out, _n = strip_sections("Social History:\nSmokes 1 ppd.\n")
+    assert "Smokes" in out
+
+
+def test_gold_offsets_keep_indexing_the_untouched_note(tmp_path):
+    """Stripping must not move a single gold offset, so records carry both
+    texts: `text` for gold and the not-in-note check, `model_text` for the
+    model."""
+    rows = [_row(evidence="HTN",
+                 text="Chief Complaint:\nHTN.\n\nAllergies:\nNKDA\n")]
+    path = _write(tmp_path, rows)
+    records, stats = build_notes(path, drop_sections=True)
+    record = records[0]
+
+    assert "NKDA" in record["text"]
+    assert "NKDA" not in record["model_text"]
+    assert record["n_sections_stripped"] == 1
+    assert stats["n_words_sent"] < stats["n_words_full"]
+    # the evidence phrase is still locatable in the original
+    assert record["rows"][0]["evidence_text"] in record["text"]
+
+
+def test_stripping_is_off_by_default(tmp_path):
+    path = _write(tmp_path, [_row(text="Chief Complaint:\nHTN.\n\nAllergies:\nNKDA\n")])
+    records, _ = build_notes(path)
+    assert records[0]["model_text"] == records[0]["text"]
+    assert records[0]["n_sections_stripped"] == 0

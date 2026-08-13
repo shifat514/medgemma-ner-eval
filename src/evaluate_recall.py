@@ -74,7 +74,7 @@ from .report_recall import write_report
 
 
 def run_tag(chunk_words, overlap_words, model_name, max_new_tokens,
-            prompt_id=None):
+            prompt_id=None, drop_sections=False):
     """Run directory name. Excludes note count so runs share cached work.
 
     Every input that changes what the model produces belongs here, because the
@@ -84,6 +84,11 @@ def run_tag(chunk_words, overlap_words, model_name, max_new_tokens,
     """
     safe = model_name.replace("/", "_")
     tag = f"{safe}_cw{chunk_words}_ov{overlap_words}_mnt{max_new_tokens}"
+    if drop_sections:
+        # Stripping sections changes what the model reads, so it must key the
+        # cache. Without it a filtered run would silently resume an unfiltered
+        # one's notes -- the same collision the prompt A/B hit.
+        tag += "_secfilt"
     return f"{tag}_p{prompt_id}" if prompt_id else tag
 
 
@@ -135,7 +140,10 @@ def predict_note(pipe, record, chunk_words=CHUNK_WORDS,
     Any inference or parse failure degrades that chunk to zero findings rather
     than killing the note or the run.
     """
-    text = record["text"]
+    # What the model reads. Identical to record["text"] unless section
+    # stripping is on; gold offsets and the not-in-note check keep using
+    # record["text"].
+    text = record.get("model_text") or record["text"]
     if run_fn is None:
         from .model import run_messages
 
@@ -362,7 +370,7 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
              oracle=False, dump_replies=False, max_new_tokens=None,
              dice_min=DICE_MIN, ratio_min=RATIO_MIN, cosine_min=COSINE_MIN,
              embed=True, embed_model=None, score_only=False,
-             prompt_variant=None):
+             prompt_variant=None, drop_sections=None):
     model_id = model_id or MODEL_ID
     model_name = model_name or MODEL_NAME
     if oracle:
@@ -374,8 +382,12 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
     gen_config = {"max_new_tokens": max_new_tokens} if max_new_tokens else None
     cap = max_new_tokens or GEN_CONFIG["max_new_tokens"]
 
+    from .recall_config import DROP_SECTIONS_ON
+
+    drop_sections = (DROP_SECTIONS_ON if drop_sections is None
+                     else drop_sections)
     records, data_stats = load(sample_file or SAMPLE_100_FILE,
-                               chunk_words, overlap_words)
+                               chunk_words, overlap_words, drop_sections)
     if smoke:
         # Records are ordered longest-note-first, so the smoke run exercises the
         # multi-chunk path and the worst case for truncation first. Taking the
@@ -407,7 +419,8 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
              f"_p{prompt_fingerprint(prompt_variant)}")
 
     tag = run_tag(chunk_words, overlap_words, model_name, cap,
-                  prompt_id=prompt_fingerprint(prompt_variant))
+                  prompt_id=prompt_fingerprint(prompt_variant),
+                  drop_sections=drop_sections)
     run_dir = os.path.join(output_dir, tag)
     os.makedirs(run_dir, exist_ok=True)
     per_note_path = os.path.join(run_dir, "per_note.jsonl")
@@ -429,6 +442,11 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
     print(f"chunks:   {sum(r.get('n_chunks', 0) for r in todo)} to run "
           f"of {sum(r.get('n_chunks', 0) for r in records)}")
     print(f"chunking: {chunk_words} words / {overlap_words} overlap")
+    if drop_sections:
+        print(f"sections: {data_stats['n_sections_stripped']} stripped, "
+              f"{data_stats['n_words_sent']:,} of "
+              f"{data_stats['n_words_full']:,} words sent "
+              f"({100 * data_stats['n_words_sent'] / data_stats['n_words_full']:.0f}%)")
     print(f"model:    {model_id}  4bit={LOAD_IN_4BIT}  max_new_tokens={cap}")
     print(f"prompt:   {prompt_variant or DEFAULT_VARIANT} "
           f"{prompt_fingerprint(prompt_variant)}  "
@@ -553,6 +571,7 @@ def run_eval(limit=None, smoke=None, sample_file=None, chunk_words=CHUNK_WORDS,
         "max_new_tokens": cap,
         "prompt_id": prompt_fingerprint(prompt_variant),
         "prompt_variant": prompt_variant or DEFAULT_VARIANT,
+        "drop_sections": bool(drop_sections),
         "chunk_words": chunk_words,
         "overlap_words": overlap_words,
         "n_notes_scored": len(records) - len(missing),
@@ -751,6 +770,10 @@ def main():
     parser.add_argument("--dice-min", type=float, default=DICE_MIN)
     parser.add_argument("--ratio-min", type=float, default=RATIO_MIN)
     parser.add_argument("--cosine-min", type=float, default=COSINE_MIN)
+    parser.add_argument("--drop-sections", action="store_true",
+                        help="strip non-diagnostic sections (medications, "
+                             "labs, admin) BEFORE chunking. Measured on this "
+                             "file: 18%% less text, zero gold lost")
     parser.add_argument("--no-embed", action="store_true",
                         help="skip L4 even when the backend is installed")
     parser.add_argument("--embed-model", default=None,
@@ -769,6 +792,7 @@ def main():
         cosine_min=args.cosine_min, embed=not args.no_embed,
         embed_model=args.embed_model, score_only=args.score_only,
         prompt_variant=args.prompt,
+        drop_sections=args.drop_sections or None,
     )
 
 

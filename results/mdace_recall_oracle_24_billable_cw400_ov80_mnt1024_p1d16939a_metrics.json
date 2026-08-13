@@ -3,20 +3,20 @@
   "by_source": {
     "combined": {
       "L1": {
-        "code_recall": 1.0,
+        "code_recall": 0.9120879120879121,
         "code_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "codes_matched": 91,
+        "codes_matched": 83,
         "codes_total": 91,
-        "f1": 1.0,
-        "form_recall": 1.0,
+        "f1": 0.9556650246305419,
+        "form_recall": 0.9150943396226415,
         "form_recall_ci": [
-          0.9880636934442285,
-          1.0
+          0.879285789422646,
+          0.9409935032480343
         ],
-        "forms_matched": 318,
+        "forms_matched": 291,
         "forms_total": 318,
         "fp": 0,
         "fp_buckets": {
@@ -26,41 +26,41 @@
         },
         "fp_not_in_note_rate": 0.0,
         "fp_rate": 0.0,
-        "gain_forms": 318,
-        "gain_rows": 100,
+        "gain_forms": 291,
+        "gain_rows": 92,
         "level": "L1",
         "n_notes": 24,
-        "n_pred": 318,
+        "n_pred": 291,
         "precision": 1.0,
         "precision_ceiling": 1.0,
         "precision_ci": [
-          0.9880636934442285,
+          0.9869706310100068,
           1.0
         ],
-        "row_recall": 1.0,
+        "row_recall": 0.92,
         "row_recall_ci": [
-          0.9630051925239981,
-          0.9999999999999999
+          0.8500173312059693,
+          0.9589070305141891
         ],
-        "rows_matched": 100,
+        "rows_matched": 92,
         "rows_total": 100,
-        "tp": 318
+        "tp": 291
       },
       "L2": {
-        "code_recall": 1.0,
+        "code_recall": 0.9120879120879121,
         "code_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "codes_matched": 91,
+        "codes_matched": 83,
         "codes_total": 91,
-        "f1": 1.0,
-        "form_recall": 1.0,
+        "f1": 0.9556650246305419,
+        "form_recall": 0.9150943396226415,
         "form_recall_ci": [
-          0.9880636934442285,
-          1.0
+          0.879285789422646,
+          0.9409935032480343
         ],
-        "forms_matched": 318,
+        "forms_matched": 291,
         "forms_total": 318,
         "fp": 0,
         "fp_buckets": {
@@ -74,37 +74,37 @@
         "gain_rows": 0,
         "level": "L2",
         "n_notes": 24,
-        "n_pred": 318,
+        "n_pred": 291,
         "precision": 1.0,
         "precision_ceiling": 1.0,
         "precision_ci": [
-          0.9880636934442285,
+          0.9869706310100068,
           1.0
         ],
-        "row_recall": 1.0,
+        "row_recall": 0.92,
         "row_recall_ci": [
-          0.9630051925239981,
-          0.9999999999999999
+          0.8500173312059693,
+          0.9589070305141891
         ],
-        "rows_matched": 100,
+        "rows_matched": 92,
         "rows_total": 100,
-        "tp": 318
+        "tp": 291
       },
       "L3": {
-        "code_recall": 1.0,
+        "code_recall": 0.9120879120879121,
         "code_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "codes_matched": 91,
+        "codes_matched": 83,
         "codes_total": 91,
-        "f1": 1.0,
-        "form_recall": 1.0,
+        "f1": 0.9556650246305419,
+        "form_recall": 0.9150943396226415,
         "form_recall_ci": [
-          0.9880636934442285,
-          1.0
+          0.879285789422646,
+          0.9409935032480343
         ],
-        "forms_matched": 318,
+        "forms_matched": 291,
         "forms_total": 318,
         "fp": 0,
         "fp_buckets": {
@@ -118,427 +118,427 @@
         "gain_rows": 0,
         "level": "L3",
         "n_notes": 24,
-        "n_pred": 318,
+        "n_pred": 291,
         "precision": 1.0,
         "precision_ceiling": 1.0,
         "precision_ci": [
-          0.9880636934442285,
+          0.9869706310100068,
           1.0
         ],
-        "recall_shown": 1.0,
-        "row_recall": 1.0,
+        "recall_shown": 0.9150943396226415,
+        "row_recall": 0.92,
         "row_recall_ci": [
-          0.9630051925239981,
-          0.9999999999999999
+          0.8500173312059693,
+          0.9589070305141891
         ],
-        "rows_matched": 100,
+        "rows_matched": 92,
         "rows_total": 100,
-        "tp": 318
+        "tp": 291
       }
     },
     "description": {
       "L1": {
-        "code_recall": 1.0,
+        "code_recall": 0.9120879120879121,
         "code_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "codes_matched": 91,
+        "codes_matched": 83,
         "codes_total": 91,
-        "f1": 0.4449877750611247,
-        "form_recall": 1.0,
+        "f1": 0.43455497382198954,
+        "form_recall": 0.9120879120879121,
         "form_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "forms_matched": 91,
+        "forms_matched": 83,
         "forms_total": 91,
-        "fp": 227,
+        "fp": 208,
         "fp_buckets": {
-          "in_note_unbilled": 227,
+          "in_note_unbilled": 208,
           "no_span": 0,
           "not_in_note": 0
         },
         "fp_not_in_note_rate": 0.0,
-        "fp_rate": 0.7138364779874213,
-        "gain_forms": 91,
-        "gain_rows": 100,
+        "fp_rate": 0.7147766323024055,
+        "gain_forms": 83,
+        "gain_rows": 92,
         "level": "L1",
         "n_notes": 24,
-        "n_pred": 318,
-        "precision": 0.2861635220125786,
-        "precision_ceiling": 0.2861635220125786,
+        "n_pred": 291,
+        "precision": 0.2852233676975945,
+        "precision_ceiling": 0.30927835051546393,
         "precision_ci": [
-          0.2392711073526034,
-          0.33816077218068263
+          0.2364064490909717,
+          0.3396370942896097
         ],
-        "row_recall": 1.0,
+        "row_recall": 0.92,
         "row_recall_ci": [
-          0.9630051925239981,
-          0.9999999999999999
+          0.8500173312059693,
+          0.9589070305141891
         ],
-        "rows_matched": 100,
+        "rows_matched": 92,
         "rows_total": 100,
-        "tp": 91
+        "tp": 83
       },
       "L2": {
-        "code_recall": 1.0,
+        "code_recall": 0.9120879120879121,
         "code_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "codes_matched": 91,
+        "codes_matched": 83,
         "codes_total": 91,
-        "f1": 0.4449877750611247,
-        "form_recall": 1.0,
+        "f1": 0.43455497382198954,
+        "form_recall": 0.9120879120879121,
         "form_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "forms_matched": 91,
+        "forms_matched": 83,
         "forms_total": 91,
-        "fp": 227,
+        "fp": 208,
         "fp_buckets": {
-          "in_note_unbilled": 227,
+          "in_note_unbilled": 208,
           "no_span": 0,
           "not_in_note": 0
         },
         "fp_not_in_note_rate": 0.0,
-        "fp_rate": 0.7138364779874213,
+        "fp_rate": 0.7147766323024055,
         "gain_forms": 0,
         "gain_rows": 0,
         "level": "L2",
         "n_notes": 24,
-        "n_pred": 318,
-        "precision": 0.2861635220125786,
-        "precision_ceiling": 0.2861635220125786,
+        "n_pred": 291,
+        "precision": 0.2852233676975945,
+        "precision_ceiling": 0.30927835051546393,
         "precision_ci": [
-          0.2392711073526034,
-          0.33816077218068263
+          0.2364064490909717,
+          0.3396370942896097
         ],
-        "row_recall": 1.0,
+        "row_recall": 0.92,
         "row_recall_ci": [
-          0.9630051925239981,
-          0.9999999999999999
+          0.8500173312059693,
+          0.9589070305141891
         ],
-        "rows_matched": 100,
+        "rows_matched": 92,
         "rows_total": 100,
-        "tp": 91
+        "tp": 83
       },
       "L3": {
-        "code_recall": 1.0,
+        "code_recall": 0.9120879120879121,
         "code_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "codes_matched": 91,
+        "codes_matched": 83,
         "codes_total": 91,
-        "f1": 0.4449877750611247,
-        "form_recall": 1.0,
+        "f1": 0.43455497382198954,
+        "form_recall": 0.9120879120879121,
         "form_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "forms_matched": 91,
+        "forms_matched": 83,
         "forms_total": 91,
-        "fp": 227,
+        "fp": 208,
         "fp_buckets": {
-          "in_note_unbilled": 227,
+          "in_note_unbilled": 208,
           "no_span": 0,
           "not_in_note": 0
         },
         "fp_not_in_note_rate": 0.0,
-        "fp_rate": 0.7138364779874213,
+        "fp_rate": 0.7147766323024055,
         "gain_forms": 0,
         "gain_rows": 0,
         "level": "L3",
         "n_notes": 24,
-        "n_pred": 318,
-        "precision": 0.2861635220125786,
-        "precision_ceiling": 0.2861635220125786,
+        "n_pred": 291,
+        "precision": 0.2852233676975945,
+        "precision_ceiling": 0.30927835051546393,
         "precision_ci": [
-          0.2392711073526034,
-          0.33816077218068263
+          0.2364064490909717,
+          0.3396370942896097
         ],
-        "recall_shown": 1.0,
-        "row_recall": 1.0,
+        "recall_shown": 0.9120879120879121,
+        "row_recall": 0.92,
         "row_recall_ci": [
-          0.9630051925239981,
-          0.9999999999999999
+          0.8500173312059693,
+          0.9589070305141891
         ],
-        "rows_matched": 100,
+        "rows_matched": 92,
         "rows_total": 100,
-        "tp": 91
+        "tp": 83
       }
     },
     "evidence": {
       "L1": {
-        "code_recall": 1.0,
+        "code_recall": 0.9120879120879121,
         "code_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8360118928653627,
+          0.9547803333307369
         ],
-        "codes_matched": 91,
+        "codes_matched": 83,
         "codes_total": 91,
-        "f1": 0.4748201438848921,
-        "form_recall": 1.0,
+        "f1": 0.4666666666666667,
+        "form_recall": 0.9191919191919192,
         "form_recall_ci": [
-          0.9626454664260378,
-          1.0
+          0.8485803066346849,
+          0.958486094510377
         ],
-        "forms_matched": 99,
+        "forms_matched": 91,
         "forms_total": 99,
-        "fp": 219,
+        "fp": 200,
         "fp_buckets": {
-          "in_note_unbilled": 219,
+          "in_note_unbilled": 200,
           "no_span": 0,
           "not_in_note": 0
         },
         "fp_not_in_note_rate": 0.0,
-        "fp_rate": 0.6886792452830188,
-        "gain_forms": 99,
-        "gain_rows": 100,
+        "fp_rate": 0.6872852233676976,
+        "gain_forms": 91,
+        "gain_rows": 92,
         "level": "L1",
         "n_notes": 24,
-        "n_pred": 318,
-        "precision": 0.3113207547169811,
-        "precision_ceiling": 0.3113207547169811,
+        "n_pred": 291,
+        "precision": 0.3127147766323024,
+        "precision_ceiling": 0.33676975945017185,
         "precision_ci": [
-          0.2629347805436491,
-          0.36421099551513264
+          0.26218063347036147,
+          0.36812933635750555
         ],
-        "row_recall": 1.0,
+        "row_recall": 0.92,
         "row_recall_ci": [
-          0.9630051925239981,
-          0.9999999999999999
+          0.8500173312059693,
+          0.9589070305141891
         ],
-        "rows_matched": 100,
+        "rows_matched": 92,
         "rows_total": 100,
-        "tp": 99
+        "tp": 91
       },
       "L2": {
-        "code_recall": 1.0,
+        "code_recall": 0.9230769230769231,
         "code_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8496390398894708,
+          0.9622409790051917
         ],
-        "codes_matched": 91,
+        "codes_matched": 84,
         "codes_total": 91,
-        "f1": 0.4748201438848921,
-        "form_recall": 1.0,
+        "f1": 0.4717948717948718,
+        "form_recall": 0.9292929292929293,
         "form_recall_ci": [
-          0.9626454664260378,
-          1.0
+          0.8611835734333936,
+          0.9653302108717904
         ],
-        "forms_matched": 99,
+        "forms_matched": 92,
         "forms_total": 99,
-        "fp": 219,
+        "fp": 199,
         "fp_buckets": {
-          "in_note_unbilled": 219,
+          "in_note_unbilled": 199,
           "no_span": 0,
           "not_in_note": 0
         },
         "fp_not_in_note_rate": 0.0,
-        "fp_rate": 0.6886792452830188,
-        "gain_forms": 0,
-        "gain_rows": 0,
+        "fp_rate": 0.6838487972508591,
+        "gain_forms": 1,
+        "gain_rows": 1,
         "level": "L2",
         "n_notes": 24,
-        "n_pred": 318,
-        "precision": 0.3113207547169811,
-        "precision_ceiling": 0.3113207547169811,
+        "n_pred": 291,
+        "precision": 0.3161512027491409,
+        "precision_ceiling": 0.33676975945017185,
         "precision_ci": [
-          0.2629347805436491,
-          0.36421099551513264
+          0.2654177110706345,
+          0.3716755620631431
         ],
-        "row_recall": 1.0,
+        "row_recall": 0.93,
         "row_recall_ci": [
-          0.9630051925239981,
-          0.9999999999999999
+          0.8625032899347025,
+          0.965681175635936
         ],
-        "rows_matched": 100,
+        "rows_matched": 93,
         "rows_total": 100,
-        "tp": 99
+        "tp": 92
       },
       "L3": {
-        "code_recall": 1.0,
+        "code_recall": 0.9230769230769231,
         "code_recall_ci": [
-          0.959494567784601,
-          1.0
+          0.8496390398894708,
+          0.9622409790051917
         ],
-        "codes_matched": 91,
+        "codes_matched": 84,
         "codes_total": 91,
-        "f1": 0.4748201438848921,
-        "form_recall": 1.0,
+        "f1": 0.4717948717948718,
+        "form_recall": 0.9292929292929293,
         "form_recall_ci": [
-          0.9626454664260378,
-          1.0
+          0.8611835734333936,
+          0.9653302108717904
         ],
-        "forms_matched": 99,
+        "forms_matched": 92,
         "forms_total": 99,
-        "fp": 219,
+        "fp": 199,
         "fp_buckets": {
-          "in_note_unbilled": 219,
+          "in_note_unbilled": 199,
           "no_span": 0,
           "not_in_note": 0
         },
         "fp_not_in_note_rate": 0.0,
-        "fp_rate": 0.6886792452830188,
+        "fp_rate": 0.6838487972508591,
         "gain_forms": 0,
         "gain_rows": 0,
         "level": "L3",
         "n_notes": 24,
-        "n_pred": 318,
-        "precision": 0.3113207547169811,
-        "precision_ceiling": 0.3113207547169811,
+        "n_pred": 291,
+        "precision": 0.3161512027491409,
+        "precision_ceiling": 0.33676975945017185,
         "precision_ci": [
-          0.2629347805436491,
-          0.36421099551513264
+          0.2654177110706345,
+          0.3716755620631431
         ],
-        "recall_shown": 1.0,
-        "row_recall": 1.0,
+        "recall_shown": 0.9292929292929293,
+        "row_recall": 0.93,
         "row_recall_ci": [
-          0.9630051925239981,
-          0.9999999999999999
+          0.8625032899347025,
+          0.965681175635936
         ],
-        "rows_matched": 100,
+        "rows_matched": 93,
         "rows_total": 100,
-        "tp": 99
+        "tp": 92
       }
     },
     "snomed": {
       "L1": {
-        "code_recall": 1.0,
+        "code_recall": 0.9166666666666666,
         "code_recall_ci": [
-          0.9258973488472576,
-          0.9999999999999999
+          0.8044643483893369,
+          0.9671167756500444
         ],
-        "codes_matched": 48,
+        "codes_matched": 44,
         "codes_total": 48,
-        "f1": 0.6173913043478261,
-        "form_recall": 1.0,
+        "f1": 0.6004618937644342,
+        "form_recall": 0.9154929577464789,
         "form_recall_ci": [
-          0.9736590931531194,
-          0.9999999999999999
+          0.8580978629768358,
+          0.9509991299250523
         ],
-        "forms_matched": 142,
+        "forms_matched": 130,
         "forms_total": 142,
-        "fp": 176,
+        "fp": 161,
         "fp_buckets": {
-          "in_note_unbilled": 176,
+          "in_note_unbilled": 161,
           "no_span": 0,
           "not_in_note": 0
         },
         "fp_not_in_note_rate": 0.0,
-        "fp_rate": 0.5534591194968553,
-        "gain_forms": 142,
-        "gain_rows": 53,
+        "fp_rate": 0.5532646048109966,
+        "gain_forms": 130,
+        "gain_rows": 49,
         "level": "L1",
         "n_notes": 24,
-        "n_pred": 318,
-        "precision": 0.44654088050314467,
-        "precision_ceiling": 0.44654088050314467,
+        "n_pred": 291,
+        "precision": 0.44673539518900346,
+        "precision_ceiling": 0.4879725085910653,
         "precision_ci": [
-          0.39286166436353176,
-          0.5014963055197897
+          0.39067679564696906,
+          0.5041820031114153
         ],
-        "row_recall": 1.0,
+        "row_recall": 0.9245283018867925,
         "row_recall_ci": [
-          0.9324156955469234,
-          1.0
+          0.8214127773651575,
+          0.9702609264010981
         ],
-        "rows_matched": 53,
+        "rows_matched": 49,
         "rows_total": 53,
-        "tp": 142
+        "tp": 130
       },
       "L2": {
-        "code_recall": 1.0,
+        "code_recall": 0.9166666666666666,
         "code_recall_ci": [
-          0.9258973488472576,
-          0.9999999999999999
+          0.8044643483893369,
+          0.9671167756500444
         ],
-        "codes_matched": 48,
+        "codes_matched": 44,
         "codes_total": 48,
-        "f1": 0.6173913043478261,
-        "form_recall": 1.0,
+        "f1": 0.6004618937644342,
+        "form_recall": 0.9154929577464789,
         "form_recall_ci": [
-          0.9736590931531194,
-          0.9999999999999999
+          0.8580978629768358,
+          0.9509991299250523
         ],
-        "forms_matched": 142,
+        "forms_matched": 130,
         "forms_total": 142,
-        "fp": 176,
+        "fp": 161,
         "fp_buckets": {
-          "in_note_unbilled": 176,
+          "in_note_unbilled": 161,
           "no_span": 0,
           "not_in_note": 0
         },
         "fp_not_in_note_rate": 0.0,
-        "fp_rate": 0.5534591194968553,
+        "fp_rate": 0.5532646048109966,
         "gain_forms": 0,
         "gain_rows": 0,
         "level": "L2",
         "n_notes": 24,
-        "n_pred": 318,
-        "precision": 0.44654088050314467,
-        "precision_ceiling": 0.44654088050314467,
+        "n_pred": 291,
+        "precision": 0.44673539518900346,
+        "precision_ceiling": 0.4879725085910653,
         "precision_ci": [
-          0.39286166436353176,
-          0.5014963055197897
+          0.39067679564696906,
+          0.5041820031114153
         ],
-        "row_recall": 1.0,
+        "row_recall": 0.9245283018867925,
         "row_recall_ci": [
-          0.9324156955469234,
-          1.0
+          0.8214127773651575,
+          0.9702609264010981
         ],
-        "rows_matched": 53,
+        "rows_matched": 49,
         "rows_total": 53,
-        "tp": 142
+        "tp": 130
       },
       "L3": {
-        "code_recall": 1.0,
+        "code_recall": 0.9166666666666666,
         "code_recall_ci": [
-          0.9258973488472576,
-          0.9999999999999999
+          0.8044643483893369,
+          0.9671167756500444
         ],
-        "codes_matched": 48,
+        "codes_matched": 44,
         "codes_total": 48,
-        "f1": 0.6173913043478261,
-        "form_recall": 1.0,
+        "f1": 0.6004618937644342,
+        "form_recall": 0.9154929577464789,
         "form_recall_ci": [
-          0.9736590931531194,
-          0.9999999999999999
+          0.8580978629768358,
+          0.9509991299250523
         ],
-        "forms_matched": 142,
+        "forms_matched": 130,
         "forms_total": 142,
-        "fp": 176,
+        "fp": 161,
         "fp_buckets": {
-          "in_note_unbilled": 176,
+          "in_note_unbilled": 161,
           "no_span": 0,
           "not_in_note": 0
         },
         "fp_not_in_note_rate": 0.0,
-        "fp_rate": 0.5534591194968553,
+        "fp_rate": 0.5532646048109966,
         "gain_forms": 0,
         "gain_rows": 0,
         "level": "L3",
         "n_notes": 24,
-        "n_pred": 318,
-        "precision": 0.44654088050314467,
-        "precision_ceiling": 0.44654088050314467,
+        "n_pred": 291,
+        "precision": 0.44673539518900346,
+        "precision_ceiling": 0.4879725085910653,
         "precision_ci": [
-          0.39286166436353176,
-          0.5014963055197897
+          0.39067679564696906,
+          0.5041820031114153
         ],
-        "recall_shown": 1.0,
-        "row_recall": 1.0,
+        "recall_shown": 0.9154929577464789,
+        "row_recall": 0.9245283018867925,
         "row_recall_ci": [
-          0.9324156955469234,
-          1.0
+          0.8214127773651575,
+          0.9702609264010981
         ],
-        "rows_matched": 53,
+        "rows_matched": 49,
         "rows_total": 53,
-        "tp": 142
+        "tp": 130
       }
     }
   },
@@ -562,10 +562,13 @@
       "snomed": 142
     },
     "forms_combined": 318,
-    "n_chunks": 82,
+    "n_chunks": 71,
     "n_codes": 91,
     "n_notes": 24,
     "n_rows": 100,
+    "n_sections_stripped": 148,
+    "n_words_full": 24059,
+    "n_words_sent": 19697,
     "rows_by_source": {
       "description": 100,
       "evidence": 100,
@@ -596,12 +599,13 @@
     "L3"
   ],
   "n_new_pairs": {
-    "L1": 318,
+    "L1": 291,
     "L2": 0,
     "L3": 0
   },
   "run": {
     "chunk_words": 400,
+    "drop_sections": true,
     "input_file": "8-07-mdace-ner-eval_sample_100-LOCAL.jsonl",
     "label": "oracle_24_billable_cw400_ov80_mnt1024_p1d16939a",
     "levels": [
@@ -614,7 +618,7 @@
     "model_id": "google/medgemma-4b-it",
     "model_name": "medgemma-4b-it-ORACLE",
     "n_cap_hits": 0,
-    "n_chunks": 82,
+    "n_chunks": 71,
     "n_chunks_salvaged": 0,
     "n_notes_scored": 24,
     "n_rejected_pairs": 0,
@@ -623,7 +627,7 @@
     "overlap_words": 80,
     "prompt_id": "1d16939a",
     "prompt_variant": "billable",
-    "run_tag": "medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_p1d16939a",
+    "run_tag": "medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_secfilt_p1d16939a",
     "thresholds": {
       "cosine_min": 0.6,
       "dice_min": 0.8,
@@ -635,13 +639,13 @@
     "n_no_span": 0,
     "n_not_in_note": 0,
     "n_notes": 24,
-    "n_pred": 318,
-    "n_span_checked": 318,
+    "n_pred": 291,
+    "n_span_checked": 291,
     "not_in_note_ci": [
       0.0,
-      0.011936306555771534
+      0.013029368989993271
     ],
     "not_in_note_rate": 0.0,
-    "pred_per_note": 13.25
+    "pred_per_note": 12.125
   }
 }

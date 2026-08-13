@@ -1,7 +1,7 @@
 # MedGemma recall benchmark — MDACE billing evidence
 
-Model **medgemma-4b-it-ORACLE** (`google/medgemma-4b-it`), 4-bit, greedy decoding, `max_new_tokens=1024`, prompt variant `billable`. **One-shot, not zero-shot:** the prompt carries a single synthetic worked example containing no MDACE content. It is not the thing under test — the comments in `prompt_recall` record that abstract prohibitions failed on a 4B model where a demonstrated one worked — but it is an example, and calling the run zero-shot would be wrong. Chunking 400 words / 80 overlap. 24 notes, 82 chunks.
-Prompt `1d16939a`, run `medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_p1d16939a`.
+Model **medgemma-4b-it-ORACLE** (`google/medgemma-4b-it`), 4-bit, greedy decoding, `max_new_tokens=1024`, prompt variant `billable`. **One-shot, not zero-shot:** the prompt carries a single synthetic worked example containing no MDACE content. It is not the thing under test — the comments in `prompt_recall` record that abstract prohibitions failed on a 4B model where a demonstrated one worked — but it is an example, and calling the run zero-shot would be wrong. Chunking 400 words / 80 overlap. 24 notes, 71 chunks.
+Prompt `1d16939a`, run `medgemma-4b-it-ORACLE_cw400_ov80_mnt1024_secfilt_p1d16939a`.
 
 **ORACLE RUN — no model involved.** The gold accept-sets were fed back through the pipeline to check the harness. Every source below must read 1.0000 at L1 and the combined line must show zero false positives; anything less is a bug in chunking, normalization or matching, not a result.
 
@@ -30,9 +30,9 @@ Matching is one prediction to at most one gold form. Without that rule a single 
 
 | level | rule | rows recalled | codes recalled | accepted forms matched | false positives | FP rate |
 |---|---|---|---|---|---|---|
-| **L1** | exact after normalization | 100/100 1.0000 (96.3%–100.0%) | 91/91 1.0000 | 318/318 1.0000 | 0 | 0.0000 |
-| **L2** | whole-token containment, either direction | 100/100 1.0000 (96.3%–100.0%) | 91/91 1.0000 | 318/318 1.0000 | 0 | 0.0000 |
-| **L3** | token-set Dice and/or difflib ratio, thresholded | 100/100 1.0000 (96.3%–100.0%) | 91/91 1.0000 | 318/318 1.0000 | 0 | 0.0000 |
+| **L1** | exact after normalization | 92/100 0.9200 (85.0%–95.9%) | 83/91 0.9121 | 291/318 0.9151 | 0 | 0.0000 |
+| **L2** | whole-token containment, either direction | 92/100 0.9200 (85.0%–95.9%) | 83/91 0.9121 | 291/318 0.9151 | 0 | 0.0000 |
+| **L3** | token-set Dice and/or difflib ratio, thresholded | 92/100 0.9200 (85.0%–95.9%) | 83/91 0.9121 | 291/318 0.9151 | 0 | 0.0000 |
 
 **Quote the rows or codes column, not the forms column.** A row is recalled by matching any ONE of its accepted forms, so a model that recalls every row while producing a single phrasing each still leaves most forms unmatched — the forms column has a ceiling set by how many phrasings the model emits, not by how much it found. It is here because the per-source breakdown below is measured in forms and the two must reconcile.
 
@@ -57,9 +57,9 @@ Every finding carries two strings: `span`, copied from the note character for ch
 
 | matched on | L1 | L2 | L3 |
 |---|---|---|---|
-| **span** — the phrase copied from the note | 1.0000 | 1.0000 | 1.0000 |
-| **name** — the standard clinical name | 1.0000 | 1.0000 | 1.0000 |
-| either field (the headline) | 1.0000 | 1.0000 | 1.0000 |
+| **span** — the phrase copied from the note | 0.9200 | 0.9200 | 0.9200 |
+| **name** — the standard clinical name | 0.9200 | 0.9200 | 0.9200 |
+| either field (the headline) | 0.9200 | 0.9200 | 0.9200 |
 
 **The rows do not add up, and that is correct.** One prediction claims at most one gold form, so a finding whose `span` reaches one accepted phrase and whose `name` reaches another still scores a single match. `either` is therefore never the sum of the two rows above it — only never less than the larger of them.
 
@@ -73,9 +73,9 @@ With loose matching and no volume control, a model that lists every phrase in th
 
 | | |
 |---|---|
-| findings per note | 13.2 |
-| false positives at L3 | 0 of 318 findings (0.0%) |
-| span not found in the note | 0 of 318 checked — 0.0000 (0.0%–1.2%) |
+| findings per note | 12.1 |
+| false positives at L3 | 0 of 291 findings (0.0%) |
+| span not found in the note | 0 of 291 checked — 0.0000 (0.0%–1.3%) |
 | findings with no span to check | 0 |
 
 The last two lines are the hallucination signal: a span the model claims to have copied from the note that is not in the note. It is the one precision-side number the billing-scope problem does not distort, because it does not depend on what was billed at all.
@@ -90,10 +90,10 @@ Recall broken out by which column of the answer key was matched. This is the gen
 
 | source | entries | L1 | L2 | L3 |
 |---|---|---|---|---|
-| all three combined | 318 | 1.0000 | 1.0000 | 1.0000 |
-| evidence text (what the note says) | 99 | 1.0000 | 1.0000 | 1.0000 |
-| code description (ICD catalogue wording) | 91 | 1.0000 | 1.0000 | 1.0000 |
-| SNOMED concept terms | 142 | 1.0000 | 1.0000 | 1.0000 |
+| all three combined | 318 | 0.9151 | 0.9151 | 0.9151 |
+| evidence text (what the note says) | 99 | 0.9192 | 0.9293 | 0.9293 |
+| code description (ICD catalogue wording) | 91 | 0.9121 | 0.9121 | 0.9121 |
+| SNOMED concept terms | 142 | 0.9155 | 0.9155 | 0.9155 |
 
 Recall per source is unambiguous: of that source's accepted forms, how many were matched.
 
@@ -115,9 +115,9 @@ SNOMED terms are shipped for only some rows, so a SNOMED recall computed out of 
 | source | L1 | L2 | L3 |
 |---|---|---|---|
 | all three combined | 0 (0.00) | 0 (0.00) | 0 (0.00) |
-| evidence text (what the note says) | 219 (0.69) | 219 (0.69) | 219 (0.69) |
-| code description (ICD catalogue wording) | 227 (0.71) | 227 (0.71) | 227 (0.71) |
-| SNOMED concept terms | 176 (0.55) | 176 (0.55) | 176 (0.55) |
+| evidence text (what the note says) | 200 (0.69) | 199 (0.68) | 199 (0.68) |
+| code description (ICD catalogue wording) | 208 (0.71) | 208 (0.71) | 208 (0.71) |
+| SNOMED concept terms | 161 (0.55) | 161 (0.55) | 161 (0.55) |
 
 ### What the L3 false positives actually are
 
@@ -137,17 +137,17 @@ The one bucket that would strengthen this is unavailable here. On the previous b
 
 | gold source | entries | precision | recall | F1 | best precision possible |
 |---|---|---|---|---|---|
-| all three combined | 318 | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
-| evidence text (what the note says) | 99 | 0.3113 | 1.0000 | 0.4748 | 0.3113 |
-| code description (ICD catalogue wording) | 91 | 0.2862 | 1.0000 | 0.4450 | 0.2862 |
-| SNOMED concept terms | 142 | 0.4465 | 1.0000 | 0.6174 | 0.4465 |
+| all three combined | 318 | 1.0000 | 0.9151 | 0.9557 | 1.0000 |
+| evidence text (what the note says) | 99 | 0.3162 | 0.9293 | 0.4718 | 0.3368 |
+| code description (ICD catalogue wording) | 91 | 0.2852 | 0.9121 | 0.4346 | 0.3093 |
+| SNOMED concept terms | 142 | 0.4467 | 0.9155 | 0.6005 | 0.4880 |
 
 **Read the precision and F1 columns as diagnostics, not as quality.** Two separate things push them down for reasons that have nothing to do with the model:
 
 1. **The annotation scope.** MDACE marks evidence only for codes that were actually billed, and a note is full of real conditions nobody billed. 100.0% of this run's false positives are phrases genuinely present in the note. They are counted against precision anyway, because subtracting your own false positives before dividing raises precision by construction and measures nothing.
 2. **Per-source false positives mean "matched nothing *in that source*".** A prediction that correctly matches the catalogue wording is a false positive on the evidence-text row. Every single-source row therefore carries almost the whole prediction set as false positives, and only the combined row counts predictions that matched nothing anywhere.
 
-The **best precision possible** column is the arithmetic ceiling given how many findings were produced: with 318 predictions against 318 accepted phrasings, no extractor of any quality exceeds 1.0000 on the combined row. F1 blends precision with recall and sits near the worse of them, so it inherits all of this and should not be quoted as a headline.
+The **best precision possible** column is the arithmetic ceiling given how many findings were produced: with 291 predictions against 318 accepted phrasings, no extractor of any quality exceeds 1.0000 on the combined row. F1 blends precision with recall and sits near the worse of them, so it inherits all of this and should not be quoted as a headline.
 
 **The precision-side number that is not distorted** is the not-in-the-note rate, because it does not depend on what was billed at all. It is in the section above.
 ---
@@ -177,15 +177,15 @@ The earlier `mdace-term-ner` run, strict exact matching against evidence text al
 | terms per note | ~50 |
 | independent figure computed separately | ≈0.5 |
 
-**The comparable figure from this run is 1.0000, not 1.0000.** The previous branch matched the model's copied phrasing against the note's own wording and nothing else, which is the `span` row at L1 — not the combined row, which also counts cases where the model's expansion of an abbreviation happened to equal the catalogue name.
+**The comparable figure from this run is 0.9200, not 0.9200.** The previous branch matched the model's copied phrasing against the note's own wording and nothing else, which is the `span` row at L1 — not the combined row, which also counts cases where the model's expansion of an abbreviation happened to equal the catalogue name.
 
-1.0000 against 0.5278 is a gap of 47.2 points on samples of 100 and 324, well inside both intervals. **Two independent implementations landing that close is the strongest evidence available that this harness measures what the previous one measured** — and it is what makes the rest of the table readable as a gain rather than a change of yardstick.
+0.9200 against 0.5278 is a gap of 39.2 points on samples of 100 and 324, well inside both intervals. **Two independent implementations landing that close is the strongest evidence available that this harness measures what the previous one measured** — and it is what makes the rest of the table readable as a gain rather than a change of yardstick.
 ---
 ## How much to trust these numbers
 
 The sample is small. Brackets are 95% Wilson intervals — the range the true rate plausibly sits in. A recall measured over ~100 rows carries roughly ±10 percentage points, so **quote the headline as "around 0.6", never as "0.61"**, and treat a gap of less than about 10 points between two levels as noise.
 
-Generation hit the token cap on **0** of 82 chunks, so no reply was cut off mid-JSON and recall is not understated on that account.
+Generation hit the token cap on **0** of 71 chunks, so no reply was cut off mid-JSON and recall is not understated on that account.
 ---
 ## Known limits
 
