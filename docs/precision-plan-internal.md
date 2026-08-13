@@ -197,6 +197,54 @@ a model returning one finding per note would score high and find nothing.
 
 ---
 
+## Already reported to Ehtesham Bhai on 2026-08-13
+
+Everything here has been sent and stands. Nothing measured since contradicts it.
+The next report to him is the improved run's numbers, sent on top of these — not
+instead of them.
+
+| | |
+|---|---|
+| recall, model alone | **78 of 100** (95% CI 69-85), up from 52.78% |
+| code recall | 70 of 91 |
+| cross-check | measured the old way this run gives 0.51 against the earlier 0.5278 |
+| ladder gains | L2 +17 rows, L3 +1, L4 +4, L5 rejected a third of the loose matches for a cost of 1 |
+| false positives | 1,083 — **1,033 real conditions never billed, only 50 invented** |
+| second-pass filter | precision 0.1135 -> **0.2311**, findings/note 51 -> 21.5, recall 0.78 -> 0.67 |
+| the filter's accuracy | dropped 710 findings, **97.2% deserved to go** |
+| section filtering | **ruled out**, measured twice |
+
+Two things worth repeating because they are the load-bearing claims:
+
+**The filter used a bare question.** No hints, no list of categories to avoid —
+only "would a coder assign a billing code to this?" It got 97% of those calls
+right. So the model already knows what is billable; it does not apply that
+knowledge while extracting. That is why splitting into two steps worked when two
+prompt rewrites did not.
+
+**All three of his asks were delivered**: false positives reported explicitly,
+L5 adjudication run, and recall/precision/F1 broken out per ground-truth source.
+
+### One correction to carry forward
+
+The `scoped` ceiling was reported as 0.945. On THIS file it is **0.98** — the
+5.5% figure is corpus-wide and these 24 notes carry only 2 status/history rows.
+Only matters if he asks what the maximum achievable recall is.
+
+### Not yet told to him, and worth saying when the next numbers go over
+
+**The ceiling.** Even a perfect filter over the current findings tops out near
+0.55 precision, because the model emits ~17 findings per note against ~4 billed.
+That is arithmetic. **It is the argument for fine-tuning** and the strongest
+available case that the remaining gap cannot be closed by prompting.
+
+**Where the filter fails.** Its 20 mistakes cluster on procedure codes, where the
+billed evidence is a substance or an observation rather than a diagnosis —
+`platelets` for a platelet transfusion, `sinus rhythm` for an ECG. A per-phrase
+question cannot judge those; a sentence could.
+
+---
+
 ## Pick up here — the improved run, not yet executed
 
 Everything below is built, tested and pushed. The only thing outstanding is a
