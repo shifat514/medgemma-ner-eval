@@ -224,15 +224,21 @@ def report(sides, dropped, unreadable, variant):
           f"{flt['row_recall']:12.4f}")
     print(f"  {'rows found':22} {raw['rows_matched']:12} {flt['rows_matched']:12}")
 
-    lost = raw["rows_matched"] - flt["rows_matched"]
+    lost_rows = raw["rows_matched"] - flt["rows_matched"]
     removed_fp = raw["fp"] - flt["fp"]
+    removed_tp = raw["tp"] - flt["tp"]
     print(f"\n  the filter dropped {dropped:,} findings "
           f"({unreadable:,} unreadable answers were kept)")
-    print(f"  of those, {removed_fp:,} were false positives and {lost} "
-          f"cost a real answer")
+    # Findings and rows are different units and mixing them makes the numbers
+    # look wrong: dropped == removed_fp + removed_tp, while rows lost is smaller
+    # because a row survives if it kept any other matching form.
+    print(f"    {removed_fp:,} were false positives  (correct to drop)")
+    print(f"    {removed_tp:,} were real matches      (should have been kept)")
     if dropped:
         print(f"  so {100.0 * removed_fp / dropped:.1f}% of what it dropped was "
               "correct to drop")
+    print(f"  those {removed_tp} lost matches cost {lost_rows} actual answers, "
+          "because some\n  rows kept another matching form")
     print("\n  Both columns are reported because filtering changes what is being")
     print("  benchmarked: MedGemma, versus MedGemma plus a filter.")
     print("-" * 67)
