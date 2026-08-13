@@ -59,8 +59,9 @@ looked like.**
 
 The cheapest way to close this is a crude lookup: match our 1,225 findings
 against a SNOMED term list and count how many produce any code at all. That
-needs a SNOMED release file, which we do not have. **Worth asking for it** — the
-answer reorders everything below.
+needs a SNOMED release file. **Asked, and we do not have one.** So the proxy is
+all we get: term-level precision is the metric we optimise, knowing it understates
+the real figure by an unknown amount. Say so wherever it is quoted.
 
 ## The four actions, in order
 
@@ -139,13 +140,12 @@ the item" rule.
 Cost: 1,225 findings at ~16 output tokens each. Cheap per call but there are a
 lot of them; batching is worth it.
 
-**Caveat added after understanding the pipeline:** this may duplicate work the
-SNOMED lookup already does. If the lookup drops non-billable phrases anyway, a
-second-pass filter is a second filter in front of a filter. Build it after the
-failure analysis, and only if the false positives turn out to be things that
-*would* map to a code.
+**Confirmed: there is no SNOMED release file available.** So the worry that this
+duplicates the lookup cannot be tested and cannot be relied on either. With no
+downstream filter to defer to, term level is the only place precision can be
+fixed, which makes this action firmer rather than weaker.
 
-**Otherwise this is the action most likely to work**, because it is the one that
+**This is the action most likely to work**, because it is the one that
 gives the model a decision it can actually make. Asking "extract only billable findings"
 inside a long extraction prompt failed twice; asking "is this one billable" about
 a single phrase is a far easier question.
