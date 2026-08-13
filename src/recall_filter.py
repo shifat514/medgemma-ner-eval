@@ -274,7 +274,7 @@ def run(run_dir=None, sample_file=None, variant=None, judge="medgemma",
     if judge == "none":
         def run_fn(messages):
             """No-op: writes the questions out with no verdicts."""
-            return None
+            return
     elif judge == "medgemma":
         from .model import load_medgemma, run_messages
         print("loading model ...")
