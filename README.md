@@ -329,6 +329,9 @@ reference number stays reproducible.
 | [`src/report_recall.py`](src/report_recall.py) | Writes the committed markdown + metrics JSON. Aggregate only — it never receives a phrase, only counts. Every table is preceded by what would count as good or bad, and every rate carries a 95% Wilson interval. |
 | [`src/evaluate_recall.py`](src/evaluate_recall.py) | The runner. Chunk → prompt → parse → pool per note → score → report. Resumable, and carries `--oracle` (the harness check) and `--score-only` (re-score without touching the GPU). |
 | [`src/recall_judge.py`](src/recall_judge.py) | L5. Adjudicates the pairs each level *newly* accepted — never everything — so cost stays proportional to what the ladder gained. |
+| [`src/recall_failures.py`](src/recall_failures.py) | Failure analysis. Attributes every false positive to the note section it came from, and buckets every miss by cause — truncated, never extracted, near miss, or rejected by the judge. Those four have opposite fixes. |
+| [`src/recall_filter.py`](src/recall_filter.py) | The second-pass filter. Asks per finding whether a coder would bill it and drops the noes. Reports raw and filtered side by side, because filtering changes what is being benchmarked. |
+| [`src/recall_compare.py`](src/recall_compare.py) | Two finished runs side by side, with guards that refuse to compare runs over different notes or an oracle against a model run. |
 | [`colab_runner_recall.ipynb`](colab_runner_recall.ipynb) | The T4 runner: deps, HF login via `getpass`, Drive mount for run state, manual upload of the input, then oracle → smoke → full run → L5. |
 | `tests/test_recall_{data,matching,prompt,scoring,judge}.py` | 131 tests, CPU-only, no model download. The measured pair tables are pinned here, so a rule change that invalidates the report's own justification fails the suite. |
 
@@ -449,6 +452,25 @@ the report now says in as many words: **quote rows or codes, not forms.**
 **9. Verify the PHI boundary rather than assume it.** Checked that no 30-character
 window of any note text appears in the committed report, and that every string
 value in the metrics JSON is a level name, a model id or a path.
+
+**10. Then measure the fix before building it.** The obvious next move was to stop
+sending the model whole notes. The failure analysis killed it: the false positives
+are spread thin, the biggest single section holds 8% of them, and the sections
+producing the most are the same ones holding the most gold — Brief Hospital Course
+has 19 of the 100 gold phrases and 94 false positives. Applied on top of the
+filter, section filtering bought +0.6 precision points and cost an answer.
+
+What worked instead was splitting extraction from filtering: a second call per
+finding asking whether a coder would bill it. Precision 0.1135 → 0.2311, volume
+51 → 21.5 findings per note, recall 0.78 → 0.67. It dropped 710 findings and 690
+of them deserved to go.
+
+**11. And ask the bare question first.** The filter's default prompt names no
+categories to avoid — only "would a coder assign a billing code to this?". It got
+97% of those calls right, which means the model already knows what is billable and
+simply does not apply that while extracting. A hinted variant exists, but if only
+the hinted one worked that would be a fact about the model rather than a fix, and
+the report has to be able to say which.
 
 ### Running it
 
