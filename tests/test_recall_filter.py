@@ -151,7 +151,8 @@ def test_raw_and_filtered_are_both_scored(tmp_path):
                                {"span": "Senna 1 TAB", "name": ""}])}
     filtered = {1: [f for f in raw[1] if f["span"] == "HTN"]}
 
-    sides = compare(records, raw, filtered, rejected=set(), levels=LEVELS)
+    sides = compare(records, [("raw", raw), ("filtered", filtered)],
+                    rejected=set(), levels=LEVELS)
     assert set(sides) == {"raw", "filtered"}
     assert sides["raw"]["n_pred"] == 2
     assert sides["filtered"]["n_pred"] == 1
@@ -163,7 +164,59 @@ def test_raw_and_filtered_are_both_scored(tmp_path):
 def test_dropping_a_true_positive_costs_recall_and_shows_up(tmp_path):
     records, _ = _notes(tmp_path, [_row()])
     raw = {1: dedupe_findings([{"span": "HTN", "name": ""}])}
-    sides = compare(records, raw, {1: []}, rejected=set(), levels=LEVELS)
+    sides = compare(records, [("raw", raw), ("filtered", {1: []})],
+                    rejected=set(), levels=LEVELS)
 
     assert sides["raw"]["row_recall"] == 1.0
     assert sides["filtered"]["row_recall"] == 0.0
+
+
+# --------------------------------------------------------------------------
+# Section filtering, stacked on top
+# --------------------------------------------------------------------------
+
+def test_blocked_sections_are_chosen_by_category_not_by_our_sample():
+    """"Had no gold in these 24 notes" measured against the same 24 notes shows
+    a zero recall cost by construction. Radiology is excluded on purpose: it
+    carries no gold here but genuinely can name a billable diagnosis."""
+    from src.recall_filter import blocked_section
+
+    for name in ("Discharge Medications", "Medications on Admission",
+                 "Allergies", "Followup Instructions", "Order date"):
+        assert blocked_section(name), name
+    for name in ("Brief Hospital Course", "Chief Complaint", "FINDINGS",
+                 "IMPRESSION", "Imaging", "Pertinent Results"):
+        assert not blocked_section(name), name
+
+
+def test_findings_from_blocked_sections_are_dropped(tmp_path):
+    from src.recall_filter import drop_blocked_sections
+
+    text = ("Chief Complaint:\nSepsis.\n\n"
+            "Discharge Medications:\n1. Senna 1 TAB PO BID\n")
+    records, _ = _notes(tmp_path, [_row(evidence="Sepsis", text=text)])
+    preds = {1: dedupe_findings([{"span": "Sepsis", "name": ""},
+                                 {"span": "Senna 1 TAB", "name": ""}])}
+
+    kept, dropped, by_section = drop_blocked_sections(records, preds)
+    assert [f["span"] for f in kept[1]] == ["Sepsis"]
+    assert dropped == 1
+    assert by_section == {"Discharge Medications": 1}
+
+
+def test_the_filters_mistakes_are_listed_not_just_counted(tmp_path):
+    """If the wrongly-dropped matches share a shape, the recall is recoverable.
+    Nobody knows until they are looked at."""
+    from src.recall_filter import wrongly_dropped
+
+    records, _ = _notes(tmp_path, [_row(evidence="HTN")])
+    raw = {1: dedupe_findings([{"span": "HTN", "name": ""}])}
+    mistakes = wrongly_dropped(records, raw, kept={1: []}, rejected=set(),
+                               levels=LEVELS)
+    assert len(mistakes) == 1
+    assert mistakes[0]["span"] == "HTN"
+    assert mistakes[0]["gold_form"] == "htn"
+
+    # nothing dropped, nothing to report
+    assert wrongly_dropped(records, raw, kept=raw, rejected=set(),
+                           levels=LEVELS) == []

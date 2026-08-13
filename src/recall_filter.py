@@ -100,6 +100,60 @@ _GUIDED = (
 )
 
 VARIANTS = {"bare": _BARE, "guided": _GUIDED}
+
+# Note sections that cannot contain a billable finding BY CATEGORY, not because
+# they happened to hold no gold in these 24 notes. That distinction is the whole
+# point: "had no gold in our sample" measured against the same sample shows a
+# zero recall cost by construction, which is not evidence of anything.
+#
+# Radiology is deliberately NOT here. FINDINGS, IMPRESSION and Imaging carry no
+# gold in this sample and produced 114 false positives between them, but a
+# radiology impression genuinely can name a billable diagnosis. Dropping them
+# would be fitting to 24 notes.
+SECTION_BLOCKLIST = (
+    "medications on admission", "discharge medications", "medications",
+    "discharge instructions", "followup instructions", "follow up instructions",
+    "discharge disposition", "discharge condition", "order date", "disp",
+    "activity", "allergies", "social history", "family history",
+    "tablet refills", "capsule refills", "facility", "completed by",
+)
+
+
+def blocked_section(name):
+    """True when `name` is a section that cannot hold a billable finding."""
+    if not name:
+        return False
+    low = " ".join(name.lower().replace("-", " ").split())
+    return any(low == b or low.startswith(b) for b in SECTION_BLOCKLIST)
+
+
+def drop_blocked_sections(records, preds):
+    """``(kept, n_dropped, by_section)`` — findings from non-diagnostic sections.
+
+    Applied to findings already extracted, so it needs no GPU and no re-run. It
+    does not save extraction time the way filtering the input would; it only
+    removes false positives that were already produced.
+    """
+    from .recall_failures import section_of, sections
+
+    by_id = {r["note_id"]: r for r in records}
+    kept, dropped, by_section = {}, 0, {}
+    for note_id, findings in preds.items():
+        record = by_id.get(note_id)
+        if record is None:
+            kept[note_id] = findings
+            continue
+        index = sections(record["text"])
+        out = []
+        for finding in findings:
+            name = section_of(record["text"], finding.get("span"), index)
+            if blocked_section(name):
+                dropped += 1
+                by_section[name] = by_section.get(name, 0) + 1
+                continue
+            out.append(finding)
+        kept[note_id] = out
+    return kept, dropped, dict(sorted(by_section.items(), key=lambda kv: -kv[1]))
 DEFAULT_VARIANT = os.environ.get("RECALL_FILTER_PROMPT", "bare")
 
 
@@ -182,13 +236,13 @@ def apply_filter(preds, verdicts):
     return kept, dropped, unreadable
 
 
-def compare(records, raw, filtered, rejected, embedder=None, levels=LEVELS,
+def compare(records, sides, rejected, embedder=None, levels=LEVELS,
             dice_min=DICE_MIN, ratio_min=RATIO_MIN, cosine_min=COSINE_MIN):
-    """Score both sides. Returns ``{"raw": metrics, "filtered": metrics}``."""
+    """Score every named side. `sides` is ``[(name, preds), ...]`` in order."""
     from .recall_scoring import score_run
 
     out = {}
-    for name, preds in (("raw", raw), ("filtered", filtered)):
+    for name, preds in sides:
         result = score_run(records, preds, embedder=embedder, levels=levels,
                            dice_min=dice_min, ratio_min=ratio_min,
                            cosine_min=cosine_min, rejected=rejected)
@@ -210,37 +264,86 @@ def compare(records, raw, filtered, rejected, embedder=None, levels=LEVELS,
     return out
 
 
-def report(sides, dropped, unreadable, variant):
-    raw, flt = sides["raw"], sides["filtered"]
-    print(f"\n--- second-pass filter ({variant}) " + "-" * 30)
-    print(f"  {'':22} {'raw':>12} {'filtered':>12}")
-    print(f"  {'findings':22} {raw['n_pred']:12,} {flt['n_pred']:12,}")
-    print(f"  {'per note':22} {raw['pred_per_note']:12.1f} "
-          f"{flt['pred_per_note']:12.1f}")
-    print(f"  {'precision':22} {raw['precision']:12.4f} {flt['precision']:12.4f}")
-    print(f"  {'best precision possible':22} {raw['precision_ceiling']:12.4f} "
-          f"{flt['precision_ceiling']:12.4f}")
-    print(f"  {'row recall':22} {raw['row_recall']:12.4f} "
-          f"{flt['row_recall']:12.4f}")
-    print(f"  {'rows found':22} {raw['rows_matched']:12} {flt['rows_matched']:12}")
+def wrongly_dropped(records, raw, kept, rejected, embedder=None, levels=LEVELS,
+                    dice_min=DICE_MIN, ratio_min=RATIO_MIN,
+                    cosine_min=COSINE_MIN):
+    """The findings that DID match gold and were dropped anyway.
 
-    lost_rows = raw["rows_matched"] - flt["rows_matched"]
-    removed_fp = raw["fp"] - flt["fp"]
-    removed_tp = raw["tp"] - flt["tp"]
-    print(f"\n  the filter dropped {dropped:,} findings "
-          f"({unreadable:,} unreadable answers were kept)")
+    The filter's mistakes, listed rather than counted. If they share a shape --
+    all procedures, all status codes -- that is recoverable. Nobody knows until
+    they are looked at, which is the whole reason for this function.
+    """
+    from .recall_scoring import match_notes
+
+    ladders = match_notes(records, raw, source=None, levels=levels,
+                          rejected=rejected, embedder=embedder,
+                          dice_min=dice_min, ratio_min=ratio_min,
+                          cosine_min=cosine_min)
+    top = levels[-1]
+    out = []
+    for record in records:
+        note_id = record["note_id"]
+        if note_id not in ladders:
+            continue
+        survivors = {(f.get("span", ""), f.get("name", ""))
+                     for f in kept.get(note_id, [])}
+        for index, (form, rule, score) in ladders[note_id][top]["pairs"].items():
+            finding = raw[note_id][index]
+            if (finding.get("span", ""), finding.get("name", "")) in survivors:
+                continue
+            slot = record["forms"].get(form, {})
+            out.append({
+                "note_id": note_id, "span": finding.get("span", ""),
+                "name": finding.get("name", ""), "gold_form": form,
+                "rule": rule, "score": round(float(score), 4),
+                "gold_sources": slot.get("sources", []),
+                "gold_codes": slot.get("codes", []),
+            })
+    return out
+
+
+def report(scored, meta):
+    """Every operating point side by side. Both units kept separate."""
+    names = list(scored)
+    print(f"\n--- operating points ({meta['variant']}) " + "-" * 28)
+    head = f"  {'':26}" + "".join(f"{n:>14}" for n in names)
+    print(head)
+
+    def row(label, key, fmt):
+        cells = "".join(format(scored[n][key], fmt).rjust(14) for n in names)
+        print(f"  {label:26}{cells}")
+
+    row("findings", "n_pred", ",")
+    row("per note", "pred_per_note", ".1f")
+    row("precision", "precision", ".4f")
+    row("best precision possible", "precision_ceiling", ".4f")
+    row("row recall", "row_recall", ".4f")
+    row("rows found", "rows_matched", "")
+
+    print(f"\n  the billability filter dropped {meta['n_dropped']:,} findings "
+          f"({meta['n_unreadable']:,} unreadable answers were kept)")
     # Findings and rows are different units and mixing them makes the numbers
     # look wrong: dropped == removed_fp + removed_tp, while rows lost is smaller
     # because a row survives if it kept any other matching form.
-    print(f"    {removed_fp:,} were false positives  (correct to drop)")
-    print(f"    {removed_tp:,} were real matches      (should have been kept)")
-    if dropped:
-        print(f"  so {100.0 * removed_fp / dropped:.1f}% of what it dropped was "
-              "correct to drop")
-    print(f"  those {removed_tp} lost matches cost {lost_rows} actual answers, "
-          "because some\n  rows kept another matching form")
-    print("\n  Both columns are reported because filtering changes what is being")
-    print("  benchmarked: MedGemma, versus MedGemma plus a filter.")
+    print(f"    {meta['removed_fp']:,} were false positives  (correct to drop)")
+    print(f"    {meta['removed_tp']:,} were real matches      (should have been kept)")
+    if meta["n_dropped"]:
+        print(f"  so {100.0 * meta['removed_fp'] / meta['n_dropped']:.1f}% of what "
+              "it dropped was correct to drop")
+    print(f"  those {meta['removed_tp']} lost matches cost {meta['lost_rows']} "
+          "actual answers, because some\n  rows kept another matching form")
+
+    if meta.get("n_section_dropped"):
+        print(f"\n  section filtering then dropped {meta['n_section_dropped']:,} "
+              "more, from sections that\n  cannot hold a billable finding by "
+              "category:")
+        for name, n in list(meta["section_dropped_by"].items())[:8]:
+            print(f"    {n:5,}  {name}")
+        print("  Radiology is deliberately NOT in that list: it carries no gold")
+        print("  in these 24 notes, but a radiology impression genuinely can.")
+
+    print("\n  Every column is reported because filtering changes what is being")
+    print("  benchmarked: MedGemma, versus MedGemma plus each filter.")
     print("-" * 67)
 
 
@@ -306,17 +409,39 @@ def run(run_dir=None, sample_file=None, variant=None, judge="medgemma",
                 }) + "\n")
 
     filtered, dropped, unreadable = apply_filter(raw, verdicts)
+    stacked, sec_dropped, sec_by = drop_blocked_sections(records, filtered)
 
     embedder = Embedder.load() if embed else None
     if embedder is None:
         levels = tuple(lv for lv in levels if lv != "L4")
     rejected = load_rejected(run_dir)
-    sides = compare(records, raw, filtered, rejected, embedder, levels,
-                    dice_min, ratio_min, cosine_min)
-    report(sides, dropped, unreadable, variant)
 
-    out = {"variant": variant, "judge": judge, "levels": list(levels),
-           "n_dropped": dropped, "n_unreadable": unreadable, **sides}
+    scored = compare(records, [("raw", raw), ("filtered", filtered),
+                               ("+ sections", stacked)],
+                     rejected, embedder, levels, dice_min, ratio_min,
+                     cosine_min)
+    meta = {
+        "variant": variant, "judge": judge, "levels": list(levels),
+        "n_dropped": dropped, "n_unreadable": unreadable,
+        "removed_fp": scored["raw"]["fp"] - scored["filtered"]["fp"],
+        "removed_tp": scored["raw"]["tp"] - scored["filtered"]["tp"],
+        "lost_rows": (scored["raw"]["rows_matched"]
+                      - scored["filtered"]["rows_matched"]),
+        "n_section_dropped": sec_dropped,
+        "section_dropped_by": sec_by,
+    }
+    report(scored, meta)
+
+    mistakes = wrongly_dropped(records, raw, filtered, rejected, embedder,
+                               levels, dice_min, ratio_min, cosine_min)
+    mistakes_path = os.path.join(run_dir, f"filter_{variant}_mistakes.jsonl")
+    with open(mistakes_path, "w", encoding="utf-8") as f:
+        f.writelines(json.dumps(row_) + "\n" for row_ in mistakes)
+    print(f"\nWrote {mistakes_path}  ({len(mistakes)} real matches the filter "
+          "dropped, CONTAINS NOTE TEXT)")
+    print("  Read it: if they share a shape, the lost recall is recoverable.")
+
+    out = {**meta, "sides": scored}
     counts_path = os.path.join(run_dir, f"filter_{variant}_summary.json")
     with open(counts_path, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2, sort_keys=True)
