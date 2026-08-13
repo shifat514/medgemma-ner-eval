@@ -35,6 +35,33 @@ That last row matters: at 1,225 predictions against 318 accepted phrasings, no
 extractor can exceed 0.2571 no matter how good it is. **Cutting volume raises
 the ceiling itself**, which is why volume is the first lever and not the third.
 
+## What we cannot measure yet, and why it matters
+
+The product is note → extracted terms → SNOMED lookup → adjacent ICD codes →
+bill. **We only measure the first arrow.** The lookup does not exist as code
+anywhere in this repo or its siblings, so the number that actually decides
+whether this works — of the codes the pipeline emits, how many were really billed
+— is currently unmeasurable.
+
+Two consequences, both of which cut against over-investing at term level:
+
+**Term-level precision probably over-counts errors.** A false positive only
+becomes a wrong charge if it maps to a billable concept. "Patient tolerated the
+procedure well" maps to nothing and dies in the lookup. So 0.1159 is a floor on
+the real precision, possibly a long way below it, and we do not know by how much.
+
+**Our SNOMED figure is a floor too, and by a measured amount.** This file ships
+at most 3 SNOMED terms per code against a mapped count of 1,894 — 157 of them, or
+**8%**. One K83.1 row maps to 64 concepts and ships 3. The real lookup has an
+order of magnitude more terms to match against, so the 47% SNOMED recall we
+reported understates that side of the pipeline. **SNOMED is not the weak link it
+looked like.**
+
+The cheapest way to close this is a crude lookup: match our 1,225 findings
+against a SNOMED term list and count how many produce any code at all. That
+needs a SNOMED release file, which we do not have. **Worth asking for it** — the
+answer reorders everything below.
+
 ## The four actions, in order
 
 ### 1. Failure analysis — `src/recall_failures.py`
@@ -112,8 +139,14 @@ the item" rule.
 Cost: 1,225 findings at ~16 output tokens each. Cheap per call but there are a
 lot of them; batching is worth it.
 
-**This is the action most likely to work**, because it is the one that gives the
-model a decision it can actually make. Asking "extract only billable findings"
+**Caveat added after understanding the pipeline:** this may duplicate work the
+SNOMED lookup already does. If the lookup drops non-billable phrases anyway, a
+second-pass filter is a second filter in front of a filter. Build it after the
+failure analysis, and only if the false positives turn out to be things that
+*would* map to a code.
+
+**Otherwise this is the action most likely to work**, because it is the one that
+gives the model a decision it can actually make. Asking "extract only billable findings"
 inside a long extraction prompt failed twice; asking "is this one billable" about
 a single phrase is a far easier question.
 
@@ -151,7 +184,10 @@ rather than hardcoding MIMIC names.
 
 ## Reporting change
 
-From the next round: **precision is the headline, recall is the constraint.**
+From the next round: **precision is the headline, recall is the constraint** —
+with the caveat that term-level precision is a proxy. The business metric is
+precision at the *code* level, after the lookup, and that stays unmeasurable
+until the lookup exists.
 Every result reports both, plus the volume that produced them. The existing rule
 still applies in reverse — precision is not quotable on its own either, because
 a model returning one finding per note would score high and find nothing.
