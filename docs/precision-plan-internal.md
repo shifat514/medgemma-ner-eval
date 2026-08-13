@@ -197,11 +197,13 @@ a model returning one finding per note would score high and find nothing.
 
 ---
 
-## Already reported to Ehtesham Bhai on 2026-08-13
+## What Ehtesham Bhai HAS been told, and what he has NOT
 
-Everything here has been sent and stands. Nothing measured since contradicts it.
-The next report to him is the improved run's numbers, sent on top of these — not
-instead of them.
+Getting this wrong in either direction is expensive, so it is split explicitly.
+An earlier version of this section lumped the two together and claimed the filter
+results had been sent. They had not.
+
+### Sent on 2026-08-13, and it stands
 
 | | |
 |---|---|
@@ -210,38 +212,72 @@ instead of them.
 | cross-check | measured the old way this run gives 0.51 against the earlier 0.5278 |
 | ladder gains | L2 +17 rows, L3 +1, L4 +4, L5 rejected a third of the loose matches for a cost of 1 |
 | false positives | 1,083 — **1,033 real conditions never billed, only 50 invented** |
-| second-pass filter | precision 0.1135 -> **0.2311**, findings/note 51 -> 21.5, recall 0.78 -> 0.67 |
-| the filter's accuracy | dropped 710 findings, **97.2% deserved to go** |
-| section filtering | **ruled out**, measured twice |
+| per-source | recall, precision and F1 for each of the three gold columns |
+| the day's sequence | why one number took a day, and what had to be built |
+| the four-item action list | failure analysis, section filtering, second-pass filter, prompt tuning |
+| the section question | 64% of text sits in sections with no gold, with the 24-note caution |
+| whole notes | confirmed we send every word, nothing filtered |
 
-Two things worth repeating because they are the load-bearing claims:
+Also delivered: all three of his original asks — false positives reported
+explicitly, L5 adjudication run, recall/precision/F1 per ground-truth source.
 
-**The filter used a bare question.** No hints, no list of categories to avoid —
-only "would a coder assign a billing code to this?" It got 97% of those calls
-right. So the model already knows what is billable; it does not apply that
-knowledge while extracting. That is why splitting into two steps worked when two
-prompt rewrites did not.
+### Measured today, NOT yet reported — this is the next message
 
-**All three of his asks were delivered**: false positives reported explicitly,
-L5 adjudication run, and recall/precision/F1 broken out per ground-truth source.
+Everything below happened AFTER the last message to him. He has the action list;
+he does not have the outcomes.
 
-### One correction to carry forward
+**1. The second-pass filter worked, and it is the headline.**
 
-The `scoped` ceiling was reported as 0.945. On THIS file it is **0.98** — the
-5.5% figure is corpus-wide and these 24 notes carry only 2 status/history rows.
-Only matters if he asks what the maximum achievable recall is.
+| | model alone | + filter |
+|---|---|---|
+| findings per note | 51.0 | **21.5** |
+| precision | 0.1135 | **0.2311** |
+| recall | 0.7800 | **0.6700** |
 
-### Not yet told to him, and worth saying when the next numbers go over
+It dropped 710 findings. **690 were false positives, 20 were real matches, so
+97.2% of the dropping was correct.** The 20 mistakes cost 11 of the 100 phrases,
+because a row survives if it keeps another matching form.
 
-**The ceiling.** Even a perfect filter over the current findings tops out near
-0.55 precision, because the model emits ~17 findings per note against ~4 billed.
-That is arithmetic. **It is the argument for fine-tuning** and the strongest
-available case that the remaining gap cannot be closed by prompting.
+**2. And the question was bare.** No hints, no list of categories to avoid — only
+"would a coder assign a billing code to this?". It got 97% of those calls right.
+**So MedGemma already knows what is billable; it just does not apply that while
+extracting.** That is why splitting into two steps worked where two prompt
+rewrites had not, and it is the most interesting single finding of the day.
 
-**Where the filter fails.** Its 20 mistakes cluster on procedure codes, where the
-billed evidence is a substance or an observation rather than a diagnosis —
-`platelets` for a platelet transfusion, `sinus rhythm` for an ECG. A per-phrase
-question cannot judge those; a sentence could.
+**3. Section filtering is ruled out.** The failure analysis attributed every
+false positive to a note section. They are spread thin — largest single section
+holds 8%, half sit in a long tail — and the sections producing the most false
+positives are the same ones holding the most gold. Brief Hospital Course has 19
+of the 100 gold phrases and 94 false positives. Stacked on the filter it bought
++0.6 precision points and cost one answer. **This corrects the earlier message
+that predicted it would help more than anything else.**
+
+**4. Where the filter fails.** Its 20 mistakes cluster on procedure codes, where
+the billed evidence is a substance or an observation rather than a diagnosis —
+`platelets` for a platelet transfusion, `sinus rhythm` for an ECG. A bare phrase
+cannot be judged; a sentence could.
+
+**5. Some of the "lost" recall was never real.** The matcher had been crediting
+overlaps like `right` against `fracture of orbital floor right side` at 0.07, and
+`blood` against a transfusion description at 0.06. The filter deleted those
+correctly. Tightening L2 would lower every number and make them honest.
+
+**6. The ceiling, and it is the fine-tuning argument.** Even a perfect filter
+over the current findings tops out near **0.55 precision**, because the model
+emits ~17 findings per note against ~4 billed. That is arithmetic, not opinion.
+Everything short of fine-tuning is worth a few points each.
+
+**7. One correction.** The `scoped` ceiling was reported as 0.945. On THIS file it
+is **0.98** — the 5.5% figure is corpus-wide and these 24 notes carry only 2
+status/history rows.
+
+### How to write that message
+
+Shifat sends it AFTER the improved run, so the new numbers go in alongside items
+1-7 rather than as a second message. See [[shifat-is-new-to-ml]] for register:
+short, plain sentences, no jargon he would not use himself, no em-dashes, and
+nothing that reads as AI-polished. Ehtesham Bhai has asked twice for shorter
+descriptions and a single number where one will do.
 
 ---
 
