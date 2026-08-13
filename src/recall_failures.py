@@ -41,7 +41,14 @@ import os
 import re
 
 from .datasets.mdace_recall import load, normalize_term
-from .recall_config import LEVELS, OUTPUT_DIR, SAMPLE_100_FILE
+from .recall_config import (
+    COSINE_MIN,
+    DICE_MIN,
+    LEVELS,
+    OUTPUT_DIR,
+    RATIO_MIN,
+    SAMPLE_100_FILE,
+)
 from .recall_matching import char_ratio, dice, string_rule, token_contains
 
 # MIMIC-III notes label sections with a capitalised phrase then a colon at the
@@ -116,7 +123,9 @@ def best_similarity(findings, forms):
     return best
 
 
-def analyse(records, preds, per_note, rejected, levels=LEVELS):
+def analyse(records, preds, per_note, rejected, levels=LEVELS,
+            embedder=None, dice_min=DICE_MIN, ratio_min=RATIO_MIN,
+            cosine_min=COSINE_MIN):
     """Returns ``(counts, detail)``. `counts` is PHI-free."""
     top = levels[-1]
     caps = {r.get("note_id"): r.get("cap_hit_windows") or []
@@ -135,8 +144,14 @@ def analyse(records, preds, per_note, rejected, levels=LEVELS):
     # Matched WITH the judge's rejections applied, so this analyses the
     # adjudicated result. Without that, a row whose only match L5 threw out
     # still looks like a hit and the rejected_by_l5 bucket can never fire.
+    # The embedder and the thresholds MUST be passed through. Without them this
+    # silently scored L1-L3 at default thresholds while the report scored L1-L4
+    # at loosened ones, so the two disagreed by 6 misses and 50 false positives
+    # and there was no way to tell which was right.
     ladders = match_notes(records, preds, source=None, levels=levels,
-                          rejected=rejected)
+                          rejected=rejected, embedder=embedder,
+                          dice_min=dice_min, ratio_min=ratio_min,
+                          cosine_min=cosine_min)
 
     for record in records:
         note_id = record["note_id"]
@@ -258,8 +273,10 @@ def report(counts):
         print("  cap, so truncation cannot be separated out. The next run will.")
 
 
-def run(run_dir=None, sample_file=None, levels=LEVELS):
+def run(run_dir=None, sample_file=None, levels=LEVELS, embed=True,
+        dice_min=DICE_MIN, ratio_min=RATIO_MIN, cosine_min=COSINE_MIN):
     from .recall_judge import load_rejected
+    from .recall_matching import Embedder
 
     run_dir = run_dir or _latest_run_dir()
     records, _stats = load(sample_file or SAMPLE_100_FILE)
@@ -281,7 +298,17 @@ def run(run_dir=None, sample_file=None, levels=LEVELS):
     print(f"findings: {sum(len(v) for v in preds.values()):,}")
     print(f"rejected by L5: {len(rejected)}")
 
-    counts, detail = analyse(records, preds, per_note, rejected, levels)
+    embedder = Embedder.load() if embed else None
+    if embedder is None:
+        levels = tuple(lv for lv in levels if lv != "L4")
+        print("[info] no embedding backend, scoring L1-L3 only. Pass the same "
+              "levels the report used or the two will not reconcile.")
+    print(f"levels:   {', '.join(levels)}  "
+          f"(dice {dice_min}, ratio {ratio_min}, cosine {cosine_min})")
+
+    counts, detail = analyse(records, preds, per_note, rejected, levels,
+                             embedder=embedder, dice_min=dice_min,
+                             ratio_min=ratio_min, cosine_min=cosine_min)
     report(counts)
 
     counts_path = os.path.join(run_dir, "failures.json")
@@ -313,8 +340,14 @@ def main():
         description="Failure analysis of a finished run (no GPU)")
     parser.add_argument("--run-dir", default=None)
     parser.add_argument("--sample-file", default=None)
+    parser.add_argument("--dice-min", type=float, default=DICE_MIN)
+    parser.add_argument("--ratio-min", type=float, default=RATIO_MIN)
+    parser.add_argument("--cosine-min", type=float, default=COSINE_MIN)
+    parser.add_argument("--no-embed", action="store_true")
     args = parser.parse_args()
-    run(run_dir=args.run_dir, sample_file=args.sample_file)
+    run(run_dir=args.run_dir, sample_file=args.sample_file,
+        embed=not args.no_embed, dice_min=args.dice_min,
+        ratio_min=args.ratio_min, cosine_min=args.cosine_min)
 
 
 if __name__ == "__main__":
