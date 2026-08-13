@@ -29,6 +29,10 @@ MISSES ARE BUCKETED BY CAUSE:
     near_miss      something scores above zero but under every threshold.
                    Matching is the problem, not extraction.
     rejected_by_l5 matched, then thrown out by the judge.
+    dropped_by_section_filter
+                   `--drop-sections` cut the phrase out before the model read
+                   it. Not a model failure at all, and it is what measures the
+                   "18% less text, zero gold phrases lost" claim.
 
 `truncated` is checked first because it is not really a model failure, and
 `not_extracted` last of the causes because it is the residual — the bucket that
@@ -136,7 +140,8 @@ def analyse(records, preds, per_note, rejected, levels=LEVELS,
     fp_by_section, fp_total = {}, 0
     fp_not_in_note = 0
     miss_causes = {"truncated": 0, "rejected_by_l5": 0, "near_miss": 0,
-                   "not_extracted": 0, "unknown_truncation": 0}
+                   "not_extracted": 0, "unknown_truncation": 0,
+                   "dropped_by_section_filter": 0}
     detail = []
 
     from .recall_scoring import match_notes
@@ -159,6 +164,11 @@ def analyse(records, preds, per_note, rejected, levels=LEVELS,
         if findings is None or note_id not in ladders:
             continue
         text = record["text"]
+        # False positives are attributed against the FULL note, because a model
+        # span has to be findable wherever it came from. Misses are diagnosed
+        # against `model_text`, which is what was actually chunked and sent.
+        # On a --drop-sections run the two differ by every stripped section.
+        model_text = record.get("model_text") or text
         index = sections(text)
         matched_idx = set(ladders[note_id][top]["pairs"])
         matched_forms = ladders[note_id][top]["matched_forms"]
@@ -184,7 +194,7 @@ def analyse(records, preds, per_note, rejected, levels=LEVELS,
             if accept & matched_forms:
                 continue
             cause = _miss_cause(entry, accept, findings, rejected, note_id,
-                                text, cap_windows, has_cap_data)
+                                text, model_text, cap_windows, has_cap_data)
             miss_causes[cause] += 1
             detail.append({"kind": "miss", "note_id": note_id, "cause": cause,
                            "code": f"{entry['code_system']} {entry['code']}",
@@ -204,16 +214,36 @@ def analyse(records, preds, per_note, rejected, levels=LEVELS,
     return counts, detail
 
 
-def _miss_cause(entry, accept, findings, rejected, note_id, text,
+def _miss_cause(entry, accept, findings, rejected, note_id, text, model_text,
                 cap_windows, has_cap_data):
     """Why this gold row was not recalled. Order matters, see the docstring."""
+    # The phrase is LOCATED rather than read off an offset. The file ships gold
+    # character offsets, but the loader does not carry them onto the row, and an
+    # earlier version of this function read a key that never existed -- which
+    # only surfaced on the first run that recorded cap windows, because until
+    # then the branch was unreachable. `locate` is whitespace-tolerant and is
+    # already what the false-positive side uses.
+    #
+    # It searches `model_text`, NOT the full note. The window bounds are word
+    # indices into what got chunked, so on a --drop-sections run the full note's
+    # positions are wrong by every stripped section -- silently, since both
+    # texts search cleanly. Same trap the oracle hit when stripping went in.
+    at = locate(model_text, entry.get("evidence_text"))
+
+    # 0. Was the phrase removed before the model ever saw it? Independent of
+    #    truncation -- a note with no cap hits can still lose gold this way --
+    #    and it is the measurement behind "18% less text, zero gold lost", so
+    #    it is its own bucket rather than the model looking like it missed.
+    if at is None and locate(text, entry.get("evidence_text")) is not None:
+        return "dropped_by_section_filter"
+
     # 1. Was it inside a window that ran out of output space? Checked first
     #    because a cut-off reply is not the model failing to see the phrase.
     if cap_windows:
-        at = entry["evidence_char_begin"]
-        word_at = len(text[:at].split())
-        if any(lo <= word_at < hi for lo, hi in cap_windows):
-            return "truncated"
+        if at is not None:
+            word_at = len(model_text[:at].split())
+            if any(lo <= word_at < hi for lo, hi in cap_windows):
+                return "truncated"
     elif not has_cap_data:
         return "unknown_truncation"
 
@@ -264,6 +294,8 @@ def report(counts):
         "near_miss": "model said something close, matcher refused",
         "not_extracted": "model never produced anything like it",
         "unknown_truncation": "cannot tell - run predates cap-window logging",
+        "dropped_by_section_filter": "the section filter cut it before the "
+                                     "model read it",
     }
     for cause, n in sorted(counts["miss_causes"].items(), key=lambda kv: -kv[1]):
         if n:
@@ -279,7 +311,14 @@ def run(run_dir=None, sample_file=None, levels=LEVELS, embed=True,
     from .recall_matching import Embedder
 
     run_dir = run_dir or _latest_run_dir()
-    records, _stats = load(sample_file or SAMPLE_100_FILE)
+    # The run tag carries `_secfilt` when that run stripped sections, and its
+    # cap-hit windows index the stripped text. Loading the full note against
+    # those windows misattributes every truncated miss, so the flag is read
+    # back off the directory name rather than left to the caller to remember.
+    drop_sections = "_secfilt" in os.path.basename(
+        run_dir.rstrip("/").rstrip("\\"))
+    records, _stats = load(sample_file or SAMPLE_100_FILE,
+                           drop_sections=drop_sections)
 
     findings_raw = _read_jsonl(os.path.join(run_dir, "findings.jsonl"))
     if not findings_raw:
@@ -294,6 +333,7 @@ def run(run_dir=None, sample_file=None, levels=LEVELS, embed=True,
     rejected = load_rejected(run_dir)
 
     print(f"run dir:  {run_dir}")
+    print(f"sections: {'stripped, matching the run' if drop_sections else 'full note'}")
     print(f"notes:    {len(preds)}")
     print(f"findings: {sum(len(v) for v in preds.values()):,}")
     print(f"rejected by L5: {len(rejected)}")

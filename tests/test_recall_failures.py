@@ -7,6 +7,7 @@ free of note text.
 
 import json
 
+from src.datasets.mdace_recall import build_notes
 from src.recall_failures import (
     analyse,
     best_similarity,
@@ -34,11 +35,9 @@ _NOTE = (
 def _record(rows):
     out = []
     for i, (code, evidence, descr) in enumerate(rows):
-        at = _NOTE.find(evidence)
         out.append({
             "row_id": i, "code_system": "ICD-10-CM", "code": code,
             "code_key": f"ICD-10-CM|{code}", "evidence_text": evidence,
-            "evidence_char_begin": at if at != -1 else 0,
             "n_snomed_shipped": 0, "n_snomed_reported": 0,
             "accept": {evidence.lower(): ["evidence"],
                        descr.lower(): ["description"]},
@@ -160,6 +159,86 @@ def test_a_run_that_predates_cap_logging_says_so_rather_than_guessing():
                           per_note=[{"note_id": 1}])       # no cap_hit_windows key
     assert causes["unknown_truncation"] == 1
     assert causes["not_extracted"] == 0
+
+
+# --------------------------------------------------------------------------
+# Records the LOADER builds, not records this file builds
+#
+# Every test above hand-writes its record dicts, and that is exactly how this
+# module came to read a row key the loader never sets. It went unnoticed for two
+# phases because the branch that reads it only runs when a run recorded cap-hit
+# windows, and none had. The first run that did crashed on contact.
+# --------------------------------------------------------------------------
+
+def _loader_record(tmp_path, note_text, evidence="Biliary obstruction",
+                   drop_sections=False):
+    """One note through the real loader, so the row fields are the real ones."""
+    row = {
+        "note_id": 1, "hadm_id": 100, "chart_type": "Inpatient",
+        "code_system": "ICD-10-CM", "gold_code": "K83.1",
+        "gold_code_description": "Obstruction of bile duct",
+        "mdace_gold_evidence_text": evidence,
+        "gold_snomed_concepts": [], "gold_snomed_concept_count": 0,
+        "note_text": note_text,
+    }
+    path = tmp_path / "sample.jsonl"
+    path.write_text(json.dumps(row), encoding="utf-8")
+    records, _stats = build_notes(str(path), drop_sections=drop_sections)
+    return records[0]
+
+
+def _causes(record, cap_windows):
+    preds = {1: dedupe_findings([{"span": "ankle sprain", "name": ""}])}
+    counts, _d = analyse([record], preds,
+                         [{"note_id": 1, "cap_hit_windows": list(cap_windows)}],
+                         rejected=set(), levels=LEVELS)
+    return counts["miss_causes"]
+
+
+def test_miss_causes_work_on_a_record_the_loader_actually_built(tmp_path):
+    record = _loader_record(tmp_path, _NOTE)
+    assert _causes(record, [[0, 50]])["truncated"] == 1
+
+
+# A stripped section BEFORE the gold, long enough that the two texts disagree
+# about where the phrase sits by more than a window's width.
+_SHIFTED_NOTE = (
+    "Discharge Medications:\n"
+    + "1. Docusate Sodium 100 mg PO BID\n" * 20
+    + "\nChief Complaint:\nBiliary obstruction.\n"
+)
+
+
+def test_truncation_is_judged_against_the_text_the_model_was_actually_sent(tmp_path):
+    """Cap windows index `model_text`. Using the full note is off by every
+    stripped section, and both texts search cleanly, so it fails silently."""
+    full = _loader_record(tmp_path, _SHIFTED_NOTE, drop_sections=False)
+    stripped = _loader_record(tmp_path, _SHIFTED_NOTE, drop_sections=True)
+    # The phrase moved from ~word 140 to ~word 2 once medications were cut.
+    assert len(stripped["model_text"].split()) < len(full["text"].split()) / 2
+
+    # A window over the first 50 words of what was SENT contains it.
+    assert _causes(stripped, [[0, 50]])["truncated"] == 1
+    # ...and the same window over the unstripped note does not.
+    assert _causes(full, [[0, 50]])["truncated"] == 0
+
+
+def test_gold_the_section_filter_removed_is_not_blamed_on_the_model(tmp_path):
+    """`--drop-sections` claims zero gold lost. This is what measures it."""
+    note = ("Discharge Medications:\n1. Senna 1 TAB PO BID\n"
+            "\nChief Complaint:\nAbdominal pain.\n")
+    record = _loader_record(tmp_path, note, evidence="Senna 1 TAB",
+                            drop_sections=True)
+    causes = _causes(record, [])
+    assert causes["dropped_by_section_filter"] == 1
+    assert causes["not_extracted"] == 0
+    # It fires without any truncation in play -- the two are independent.
+    assert causes["truncated"] == 0
+
+
+def test_an_unstripped_run_can_never_report_a_section_filter_drop(tmp_path):
+    record = _loader_record(tmp_path, _NOTE, drop_sections=False)
+    assert _causes(record, [])["dropped_by_section_filter"] == 0
 
 
 def test_best_similarity_saturates_on_an_actual_rule_match():
