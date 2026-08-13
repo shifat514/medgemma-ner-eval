@@ -4,7 +4,9 @@ Follows `recall-benchmark-internal.md`. That phase asked how much billed
 evidence MedGemma-4B recovers. This one asks how much of what it returns is
 worth billing.
 
-Status: plan only. Nothing built yet.
+Status: **all four actions built and tested. The improved run has NOT been
+executed.** See "Pick up here" at the bottom — that is the next thing to do and
+it needs a GPU.
 
 ---
 
@@ -191,3 +193,104 @@ until the lookup exists.
 Every result reports both, plus the volume that produced them. The existing rule
 still applies in reverse — precision is not quotable on its own either, because
 a model returning one finding per note would score high and find nothing.
+
+
+---
+
+## Pick up here — the improved run, not yet executed
+
+Everything below is built, tested and pushed. The only thing outstanding is a
+GPU run that nobody has done yet.
+
+### The command
+
+```bash
+python -m src.evaluate_recall --prompt billable --drop-sections
+```
+
+**71 chunks, roughly 65 minutes on a free-tier T4.** Fewer chunks than the 82 of
+the run already on Drive, so it is cheaper than what has already been paid for.
+Chunk size deliberately stays at 400; see "decided against" below.
+
+On Colab that is cell **10b** of `colab_runner_recall.ipynb`. Order on a fresh
+runtime: sections 2, 3, 4, 5, 6, 7, then 10b. Section 7 is the harness check and
+must print PASS, with `71 chunks` and `148 sections stripped, 82% of words sent`.
+If the chunk count is not 71 the flag did not take.
+
+### Why these two changes and not others
+
+**`--drop-sections`** strips medications, labs and admin sections *before*
+chunking, so the model never reads them and does not spend output budget on them.
+Measured on the file: **18% less text, zero gold phrases lost.**
+
+Two obvious-looking candidates are deliberately kept because they hold gold —
+**Social History has 3 of the 100 phrases** (the smoking and alcohol status codes
+F17.200 and F10.10, which are exactly the ones the billability filter also got
+wrong) and Discharge Instructions has 1. Radiology is kept as well: no gold in
+these 24 notes, but a radiology impression genuinely can name a billable
+diagnosis, so dropping it would be fitting to the sample rather than the task.
+
+**`--prompt billable`** was measured head to head against `scoped` on the same 17
+chunks: hallucinated spans fell from 9.22% to 1.02%, 95% intervals 6.0-13.8 and
+0.3-3.6, at identical row recall. The run currently on Drive used `scoped`.
+
+### What to expect, and the confidence on each
+
+| | current | expected | confidence |
+|---|---|---|---|
+| recall, model alone (L4 adjudicated) | 0.78 | 0.80-0.83 | moderate |
+| precision, model alone | 0.1135 | 0.14-0.16 | moderate |
+| not-in-note (hallucination) | 4.24% | ~1% | good, measured |
+| chunks hitting the token cap | 21 of 82 | lower | this is the decisive one |
+
+**It may come back flat.** If the 7 chunks cut mid-production were not losing
+gold phrases and the lab sections were not producing many findings, almost
+nothing moves. That is a real outcome and still worth knowing.
+
+**The cap-hit count decides the next step.** If truncation is largely gone,
+chunk size does not need changing. If it is still high, `--chunk-words 250
+--overlap-words 50` is 105 chunks and about 96 minutes.
+
+### Then, on the new findings
+
+Both must be re-run because the findings changed. Neither is optional: the
+headline pair `0.67 recall / 0.23 precision` does not update until the filter
+runs.
+
+```bash
+python -m src.recall_judge  --judge medgemma --run-dir <new run dir>   # ~2 min
+python -m src.recall_filter --run-dir <new run dir>                    # ~15 min
+python -m src.evaluate_recall --score-only --prompt billable --drop-sections
+```
+
+### Decided against, with reasons
+
+**`--chunk-words 250` in this run.** Adds 34 chunks for an unmeasured gain.
+Waits on the cap-hit count.
+
+**The `billable_capped` variant** (max 25 findings per call). Built and tested,
+hash `f284b045`. It is the untried lever against the 24% within-reply repetition
+rate, but it could cost recall and nothing measures that yet. Running it as a
+second arm would have doubled a 65-minute job to over three hours.
+
+**Tightening L2 containment.** Free and scoring-side, so it can be done any time
+without a run. It will LOWER every number — `right` currently matches `fracture
+of orbital floor right side` at 0.07 overlap and counts as recall. Worth doing
+for honesty, not for performance, and worth doing *after* the run so the two
+changes stay separable.
+
+**Showing the billability filter the surrounding sentence.** The filter's 20
+mistakes cluster on procedure codes, where the billed evidence is a substance or
+an observation rather than a diagnosis — `platelets` for a platelet transfusion,
+`sinus rhythm` for an ECG. A bare phrase cannot be judged; a sentence can. Likely
+trades precision back for recall rather than beating the curve, so it is a
+second-order experiment.
+
+### The honest ceiling
+
+None of this makes the system shippable. Even a perfect filter over the improved
+findings tops out near 0.55 precision, because the model still emits roughly 17
+findings per note against about 4 billed. Closing that gap needs the model to
+extract less and better, which is fine-tuning, and fine-tuning is not on the list
+until Ehtesham Bhai asks for it. Everything in this document is cleanup on top of
+a measurement that is already defensible.
