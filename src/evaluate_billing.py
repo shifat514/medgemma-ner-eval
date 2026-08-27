@@ -55,6 +55,7 @@ from .billing_config import (
     MODEL_ID,
     MODEL_NAME,
     OUTPUT_DIR,
+    REPETITION_PENALTY,
     RESULTS_DIR,
     SAMPLE_FILE,
     VARIANTS,
@@ -64,9 +65,18 @@ from .datasets.billing import load_sample, normalize_code
 from .prompt_billing import build_messages, parse_codes, prompt_fingerprint
 
 
-def run_tag(model_name, max_new_tokens, prompt_fp):
-    """Directory name carrying every input that changes the model's output."""
-    return f"{model_name}_tok{max_new_tokens}_p{prompt_fp}"
+def run_tag(model_name, max_new_tokens, prompt_fp, repetition_penalty=1.0):
+    """Directory name carrying every input that changes the model's output.
+
+    The penalty is omitted from the name when it is 1.0 — i.e. off — so the runs
+    made before it existed stay addressable. `--repetition-penalty 1.0` therefore
+    replays the no-penalty cache instead of re-running it, which makes the
+    comparison free.
+    """
+    tag = f"{model_name}_tok{max_new_tokens}"
+    if repetition_penalty and repetition_penalty != 1.0:
+        tag += f"_rp{str(repetition_penalty).replace('.', '')}"
+    return f"{tag}_p{prompt_fp}"
 
 
 # ---------------------------------------------------------------------------
@@ -211,17 +221,20 @@ def _append(path, record):
 
 def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
              model_id=MODEL_ID, model_name=MODEL_NAME,
-             max_new_tokens=None, resume=True, dump_replies=False,
-             output_dir=OUTPUT_DIR, score_only=False):
+             max_new_tokens=None, repetition_penalty=None, resume=True,
+             dump_replies=False, output_dir=OUTPUT_DIR, score_only=False):
     records = load_sample(sample_file)
     variants = list(variants or VARIANTS)
 
     gen = dict(GEN_CONFIG)
     if max_new_tokens:
         gen["max_new_tokens"] = max_new_tokens
+    if repetition_penalty is not None:
+        gen["repetition_penalty"] = repetition_penalty
 
     tag = "oracle" if oracle else run_tag(
-        model_name, gen["max_new_tokens"], prompt_fingerprint()
+        model_name, gen["max_new_tokens"], prompt_fingerprint(),
+        gen.get("repetition_penalty", 1.0),
     )
     run_dir = os.path.join(output_dir, tag)
     per_note_path = os.path.join(run_dir, "per_note.jsonl")
@@ -235,6 +248,8 @@ def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
     print(f"variants   {', '.join(variants)}")
     print(f"run dir    {run_dir}")
     print(f"prompt     {prompt_fingerprint()}")
+    print(f"gen        max_new_tokens={gen['max_new_tokens']}  "
+          f"repetition_penalty={gen.get('repetition_penalty', 1.0)}")
     print(f"cached {len(done)}, to run {len(todo)}"
           f"{'  (score-only)' if score_only else ''}\n")
 
@@ -294,6 +309,7 @@ def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
         "model_id": model_id if not oracle else None,
         "prompt_fingerprint": prompt_fingerprint(),
         "max_new_tokens": gen["max_new_tokens"],
+        "repetition_penalty": gen.get("repetition_penalty", 1.0),
         "run_dir": run_dir,
         "n_notes": len(records),
         "oracle": oracle,
@@ -314,6 +330,8 @@ def _print_summary(result, run_meta, records):
     print("=" * 78)
     print(f"model   {run_meta['model']}")
     print(f"prompt  {run_meta['prompt_fingerprint']}")
+    print(f"gen     max_new_tokens={run_meta['max_new_tokens']}  "
+          f"repetition_penalty={run_meta['repetition_penalty']}")
     print(f"notes   {run_meta['n_notes']}\n")
 
     print(f"{'variant':<18} {'gold':>5} {'pred':>5} {'tp':>4} {'fp':>4} "
@@ -433,6 +451,10 @@ def main():
     parser.add_argument("--model", default=MODEL_ID)
     parser.add_argument("--model-name", default=MODEL_NAME)
     parser.add_argument("--max-new-tokens", type=int, default=None)
+    parser.add_argument("--repetition-penalty", type=float, default=None,
+                        help=f"default {REPETITION_PENALTY}; pass 1.0 to turn "
+                             "it off, which replays the no-penalty run rather "
+                             "than re-running it")
     parser.add_argument("--no-resume", action="store_true")
     parser.add_argument("--dump-replies", action="store_true",
                         help="keep raw replies (they quote note text)")
@@ -446,6 +468,7 @@ def main():
         model_id=args.model,
         model_name=args.model_name,
         max_new_tokens=args.max_new_tokens,
+        repetition_penalty=args.repetition_penalty,
         resume=not args.no_resume,
         dump_replies=args.dump_replies,
         output_dir=args.output_dir,

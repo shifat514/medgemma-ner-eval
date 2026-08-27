@@ -6,7 +6,7 @@
         recall-rescore recall-judge \
         recall-questions clean-recall-runs \
         billing-sample billing-show billing-oracle billing-check \
-        billing-run billing-rescore clean-billing-runs
+        billing-run billing-ab billing-rescore clean-billing-runs
 
 # Install dependencies via uv
 setup:
@@ -193,6 +193,16 @@ billing-check:
 
 # The run: 4 notes x 3 variants = 12 calls. Resumable.
 billing-run:
+	uv run python -m src.evaluate_billing --dump-replies
+
+# The repetition-penalty A/B. `1.0` is off and REPLAYS the earlier no-penalty
+# run from cache rather than re-running it, so this costs 12 calls, not 24.
+#
+# Read precision and recall separately. A generation loop produces false
+# positives, not misses, so the penalty is expected to move precision and leave
+# recall where it was. If recall moves, the loop was eating real answers too.
+billing-ab:
+	uv run python -m src.evaluate_billing --repetition-penalty 1.0
 	uv run python -m src.evaluate_billing --dump-replies
 
 # Rescore a finished run. No model call, no GPU.

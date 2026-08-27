@@ -77,9 +77,38 @@ LOAD_IN_4BIT = True
 # 1024 matches the recall branch. It does not fix over-production — nothing here
 # does, and precision is where that will show up — but it stops the measurement
 # from being decided by the cap. Truncations are still counted and printed.
+# REPETITION PENALTY, ADDED AFTER THE FIRST REAL RUN SHOWED THE MODEL COUNTING.
+#
+# 20 of 32 `assessment_cut` predictions and 20 of 29 `leakage_cut` predictions
+# were enumerations, not answers:
+#
+#     R51.9, R51.81, R51.82, R51.83, ... R51.89        (note 112976)
+#     R11.0, R11.1, R11.2, R11.3, ... R11.9            (note 96176)
+#
+# It is incrementing the last digit. Most of those codes do not exist. This is
+# the same degeneration the recall branch measured, and raising the cap from 512
+# to 1024 only bought it more room to loop — 6 of 12 replies still truncated.
+#
+# NOT `no_repeat_ngram_size`, WHICH IS THE OBVIOUS WRONG ANSWER HERE. The output
+# is JSON: `", "description": "` and `{"code": "` repeat on every single item by
+# design. Forbidding repeated n-grams would forbid the format, and the run would
+# come back malformed rather than fixed. A logit penalty degrades gracefully
+# where an n-gram ban does not.
+#
+# 1.15 is chosen to be *mild* for the same reason — the required JSON keys have
+# to survive. Above ~1.2 the penalty starts fighting the format. The malformed
+# count is printed, so if this is set too high that shows up as a number.
+#
+# THIS IS EXPECTED TO MOVE PRECISION AND NOT RECALL. A loop produces false
+# positives; it does not produce misses. Recall was 0 of 16 on `leakage_cut` and
+# the loop cannot explain that. Recorded here so the result is checked against a
+# prediction rather than rationalised after the fact.
+REPETITION_PENALTY = float(os.environ.get("BILLING_REPETITION_PENALTY", "1.15"))
+
 GEN_CONFIG = {
     "max_new_tokens": int(os.environ.get("BILLING_MAX_NEW_TOKENS", "1024")),
     "do_sample": False,
+    "repetition_penalty": REPETITION_PENALTY,
 }
 
 # A reply within this many tokens of the cap is treated as truncated.

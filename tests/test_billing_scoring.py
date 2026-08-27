@@ -11,7 +11,12 @@ deleting a false positive, which raises precision for free. That is the one bug
 in this file that would produce a better-looking number rather than a crash.
 """
 
-from src.evaluate_billing import aggregate, make_oracle_reply, score_note
+from src.evaluate_billing import (
+    aggregate,
+    make_oracle_reply,
+    run_tag,
+    score_note,
+)
 from src.prompt_billing import build_messages, parse_codes, prompt_fingerprint
 
 # --- reply parsing ----------------------------------------------------------
@@ -214,6 +219,21 @@ def test_oracle_reply_round_trips_through_the_real_parser():
 
 
 # --- prompt -----------------------------------------------------------------
+
+
+def test_run_tag_omits_the_penalty_when_it_is_off():
+    """1.0 must produce the pre-penalty name, or the no-penalty run re-runs.
+
+    That name addresses results already on Drive. Changing it would turn the
+    free half of the A/B into 12 more GPU calls.
+    """
+    assert run_tag("m", 1024, "abc", 1.0) == "m_tok1024_pabc"
+    assert run_tag("m", 1024, "abc") == "m_tok1024_pabc"
+
+
+def test_run_tag_separates_runs_that_used_a_penalty():
+    assert run_tag("m", 1024, "abc", 1.15) == "m_tok1024_rp115_pabc"
+    assert run_tag("m", 1024, "abc", 1.15) != run_tag("m", 1024, "abc", 1.0)
 
 
 def test_prompt_fingerprint_is_stable_and_short():
