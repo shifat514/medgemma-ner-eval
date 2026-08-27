@@ -6,7 +6,8 @@
         recall-rescore recall-judge \
         recall-questions clean-recall-runs \
         billing-sample billing-show billing-oracle billing-check \
-        billing-run billing-ab billing-rescore clean-billing-runs
+        billing-run billing-ab billing-rescore billing-ceiling billing-extract \
+        clean-billing-runs
 
 # Install dependencies via uv
 setup:
@@ -208,6 +209,25 @@ billing-ab:
 # Rescore a finished run. No model call, no GPU.
 billing-rescore:
 	uv run python -m src.evaluate_billing --score-only
+
+# --- Did it FIND the conditions it failed to code? -----------------------------
+# A separate question from the code evaluation above, and a separate answer key
+# (src/billing_evidence.py, hand-built from the notes). 0 of 16 codes cannot
+# tell "never found the influenza" apart from "found it, coded it J11.9", and
+# those point at different work.
+
+# The structural ceiling: how many gold codes are evidenced in each variant's
+# input at all. No GPU, ~1s. Reads 16 / 16 / 12 -- four codes lose their only
+# evidence with the Problem List, so leakage_cut recall was quoted against the
+# wrong denominator.
+billing-ceiling:
+	uv run python -m src.evaluate_billing_extract --ceiling
+
+# Runs the existing `billable` extraction prompt (78/100 on MDACE) over the same
+# notes and reports, per gold code, whether the condition was surfaced.
+# 12 calls (needs a GPU + HF login).
+billing-extract:
+	uv run python -m src.evaluate_billing_extract --dump-phrases
 
 # Wipes cached per-note run state.
 clean-billing-runs:
