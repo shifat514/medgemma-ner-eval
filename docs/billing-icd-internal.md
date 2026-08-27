@@ -271,64 +271,108 @@ it — none of which leaks, all of which a coder reads.
 
 ---
 
-## Pick up here
+## Results, 2026-08-27
 
-Everything below the model is built, tested and verified. **The GPU run has not
-happened.**
+Four configurations: two prompts x two decoding configs. **Recall on
+`leakage_cut` is 0 of 16 in every one of them.**
 
-State as of 2026-08-27:
+| prompt | penalty | full | assessment_cut | leakage_cut |
+|---|---|---|---|---|
+| `e78d3dd8` ear example | off | P .9412 / R 1.0000 | P .0625 / R .1250 | P 0 / R 0 |
+| `e78d3dd8` ear example | 1.15 | P .9412 / R 1.0000 | P 0 / R 0 | P 0 / R 0 |
+| `4af27169` skin example | off | P .3111 / R .8750 | P .0175 / R .0625 | P 0 / R 0 |
+| `4af27169` skin example | 1.15 | P .7778 / R .8750 | P .1000 / R .0625 | P 0 / R 0 |
 
-- 591 tests pass, ruff clean on all new files.
-- `make billing-sample` runs and every printed check hits its predicted value:
-  4 notes, 17 DX lines, 16 unique, 1 duplicate collapsed; leak counts 16 / 2 / 0.
-- `make billing-oracle` reads 1.0000/1.0000 on all three variants, zero false
-  positives.
-- `colab_runner_billing.ipynb` written, 25 cells, not yet executed.
+**The harness is proven.** `full` reached 16/16 recall with one false positive
+under the ear prompt: given a note with `DX 1: B08.5` printed on it, the pipeline
+scores a perfect answer. Nothing downstream of the model is hiding a result.
 
-To run it:
+**The two codes ever recovered without the Assessment were printed in the input.**
+`assessment_cut` peaked at 2 of 16, both in note 26819, both `J30.2` and `L20.9`
+— the two codes its Problem List spells out in full. Remove the Problem List and
+it is 0 of 16. The model copied; it did not derive.
 
-1. `make billing-sample` on this machine — already done, the file is at
-   `data/samples/billing_sample.jsonl`.
-2. Push the branch. Open `colab_runner_billing.ipynb` from GitHub in Colab.
-3. Upload `billing_sample.jsonl` at step 6. Check the four numbers it prints.
-4. Step 7 (oracle), step 8 (`full`), step 9 (all three). ~12 calls, well under
-   30 minutes on a T4.
+**Precision is not worth quoting.** It ranges 0.00 to 0.94 across configurations,
+driven entirely by how badly the model looped on a given run rather than by
+anything about coding. Recall is the number that survives.
 
-**The two traps from the recall branch both still apply.** The notebook in the
-browser is a separate copy from the repo — running the clone cell updates the VM,
-never the notebook being read; a missing cell means close the tab and reopen the
-link. And anything that picks a run directory picks by note count, never by
-mtime.
+---
 
-**One thing that is genuinely unknown and worth watching:** every prompt and
-threshold in this repo was tuned on adult ICU discharge summaries. These are
-pediatric outpatient encounter notes. Nothing about that transfer has been
-measured. If the numbers come back strange, distribution shift is the first
-hypothesis, not the last.
+## Three bugs found by running it, in the order they were found
+
+Each one produced a plausible-looking number rather than an error, which is the
+only reason they needed finding rather than noticing.
+
+**1. A truncated reply scored as one code.** A reply cut off mid-array leaves the
+outer object unclosed; `_find_json_object` returns the first *balanced* brace,
+which is the first code object, and it parses cleanly as a single unwrapped code.
+6 of 12 replies truncated and every one scored exactly one prediction.
+`leakage_cut` read 0.0000 from four notes whose answers were never read. Fixed by
+walking every balanced object and advancing past unbalanced ones.
+
+**2. Generation arguments never reached `generate`.** `ImageTextToTextPipeline`
+routes exactly four things to the model: `max_new_tokens`, `generate_kwargs`, and
+two return-shape flags. Everything else goes to the *processor* and is dropped.
+The repetition-penalty A/B came back byte-identical — same counts, same false
+positives, same order, one code out of sequence in both — because the penalty had
+never been applied. `do_sample=False` had been dropped the same way since
+`model.py` was written, which affects the MDACE and recall branches too; their
+outputs were deterministic regardless, so this appears to have cost nothing
+there, but it was luck rather than the flag working.
+
+**3. The prompt's example contaminated the answers, in both directions.** The
+first example was an otitis media visit coded `H66.001`; note 112976 opens with
+"Ear infection, fever, ear pulling" and `H66.001` came back as a false positive
+on it in every configuration. The *shape* leaked too: 10 of 16 false positives
+under the penalty carried three digits after the decimal point against 2 of 16
+gold codes shaped that way.
+
+Replacing it with two skin conditions moved the contamination rather than
+removing it — `B35.4` then appeared as a false positive on note 26819, and note
+112976's harness check collapsed from 2/2 to 0/2 with 31 predictions. **A 4B
+model copies whatever example it is given.** `tests/test_billing_prompt_hygiene.py`
+now asserts the example shares no term, code or ICD category with the corpus, but
+no test can stop the model from copying something.
+
+---
+
+## What this does and does not license saying
+
+**Says:** MedGemma-4B, zero-shot, recovered none of the 16 billed codes from
+these four notes once the answer was not in the input. That is robust to the
+token cap, to a repetition penalty, and to a full prompt rewrite.
+
+**Does not say:** that MedGemma cannot code. 16 codes is a spot check; one code
+is 6.25 recall points. It does not speak to the 27B model, to a fine-tune, to a
+retrieval step over an ICD catalogue, or to any note type other than pediatric
+outpatient.
+
+**The obvious next question, unanswered:** the phrase-extraction work on MDACE
+recovered 78 of 100 billed phrases. This run says the code half is where it
+breaks. A term to code lookup over a real ICD catalogue is the architecture that
+follows from both results, and it is still not built.
 
 ---
 
 ## What Ehtesham Bhai has been told, and what he has not
 
-**Told:** nothing yet. Nothing about this branch has been sent.
+**Told, 2026-08-27:** the headline (0 of 16), the Problem List leak and what the
+two recovered codes were, the harness check at 16/16, the four configurations,
+and the sample-size caveat. Also the `Z68.51` duplicate in note 96176, as
+something to check on their side.
 
-**Not told, and worth saying when the numbers go out:**
+**Not told, and not currently worth a message:**
 
-1. The repo could not answer his question before today — the phrase→code step
-   did not exist. What he is getting is MedGemma asked for codes directly, which
-   is a different system from the pipeline he has been hearing about.
-2. The Problem List leaks the answer too, and note 26819 leaks two gold codes
-   verbatim. Both numbers are reported; he should pick which one he wants to
-   quote.
-3. 16 codes is a spot check, not a benchmark. One code is 6.25 recall points.
-   ~50 notes would make it a number worth deciding on.
-4. Three of the 16 gold codes are BMI-percentile lookups and one is a visit-type
-   judgement. If those dominate the misses, the fix is a code-book step, not a
-   better model.
-5. The notes are not de-identified and the run happened on Colab. He should know
-   that, whatever he decides about it.
-6. `Z68.51` appears twice in note 96176's Assessment. Probably worth him
-   checking whether that is a template bug on their side.
+1. The three harness bugs above. They are the reason today took as long as it
+   did, and the numbers are only trustworthy because they were found — but the
+   final numbers do not depend on knowing that.
+2. That the repo could not answer his question at all before today; the
+   phrase to code step never existed.
+3. That three of the 16 gold codes are BMI-percentile lookups and one is a
+   visit-type judgement, so even a working model needs a code-book step.
+4. That the notes are not de-identified and this ran on Colab.
+
+Items 3 and 4 should go out if he asks for next steps or for more data.
 
 Related: [`recall-benchmark-internal.md`](recall-benchmark-internal.md),
 [`precision-plan-internal.md`](precision-plan-internal.md).
