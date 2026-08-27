@@ -4,7 +4,9 @@
         recall-oracle recall-smoke recall-ab recall-compare recall-chunks \
         recall-run \
         recall-rescore recall-judge \
-        recall-questions clean-recall-runs
+        recall-questions clean-recall-runs \
+        billing-sample billing-show billing-oracle billing-check \
+        billing-run billing-rescore clean-billing-runs
 
 # Install dependencies via uv
 setup:
@@ -160,3 +162,43 @@ recall-questions:
 # Wipes cached per-note run state for the benchmark.
 clean-recall-runs:
 	rm -rf outputs/mdace_recall
+
+# --- Pediatric billing ICD-code evaluation ------------------------------------
+# REAL PATIENT DATA, AND NOT DE-IDENTIFIED. Ehtesham Bhai's four encounter PDFs
+# carry patient names, dates of birth, a rendering provider and a license
+# number. They live in ../ai-medical-billing/ and must stay outside the repo.
+# billing-sample parses them here; the GPU box only ever sees the built sample.
+
+# Parse the four PDFs -> data/samples/ (gitignored). LOCAL ONLY. Needs
+# poppler-utils (pdftotext). Read what it prints — the leak counts are checks
+# with a right answer: full 16, assessment_cut 2, leakage_cut 0.
+billing-sample:
+	uv run python -m src.build_billing_sample
+
+# Dump one note's three input variants, to see exactly what the model is shown.
+# QUOTES NOTE TEXT to the terminal. e.g. make billing-show NOTE=26819
+billing-show:
+	uv run python -m src.build_billing_sample --show $(NOTE)
+
+# Harness ceiling — no model, no GPU, ~1s. Every variant must read 1.0000 on
+# both precision and recall. Run this BEFORE spending GPU time.
+billing-oracle:
+	uv run python -m src.evaluate_billing --oracle
+
+# The harness check WITH the model: the note with the DX lines left in. Not a
+# result — a low number here means the prompt or the parser is wrong, not the
+# model. 4 calls (needs a GPU + HF login).
+billing-check:
+	uv run python -m src.evaluate_billing --variant full --dump-replies
+
+# The run: 4 notes x 3 variants = 12 calls. Resumable.
+billing-run:
+	uv run python -m src.evaluate_billing --dump-replies
+
+# Rescore a finished run. No model call, no GPU.
+billing-rescore:
+	uv run python -m src.evaluate_billing --score-only
+
+# Wipes cached per-note run state.
+clean-billing-runs:
+	rm -rf outputs/billing_icd

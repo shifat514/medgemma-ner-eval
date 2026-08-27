@@ -54,6 +54,13 @@ results/*.json
 !results/mdace_recall_*.md
 !results/mdace_recall_*.json
 
+# ...and the pediatric billing ICD evaluation. Counts, rates and ICD codes
+# only. An ICD code is a catalogue entry, not note text — B08.5 says nothing
+# about which patient it was billed for. The raw replies and the built sample
+# DO quote the notes and stay in outputs/ and data/ (below).
+!results/billing_icd_*.md
+!results/billing_icd_*.json
+
 # Model weights (downloaded at runtime)
 *.bin
 *.safetensors

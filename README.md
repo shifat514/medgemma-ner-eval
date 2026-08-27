@@ -507,6 +507,156 @@ runnable on a CPU-only laptop.
 
 ---
 
+## Pediatric billing ICD-code evaluation
+
+**A different question from everything above.** The MDACE and MIMIC work asks
+which *phrases* in a note a coder would bill, and scores phrase overlap — the
+phrase→code lookup was always a downstream step and was never built. This asks
+the question directly: **given the note, does the model output the right ICD-10
+codes?** Gold is a set of codes and scoring is exact code match. `B08.5` either
+equals `B08.5` or it does not, so none of the fuzzy matching ladder applies.
+
+The ask, from Ehtesham Bhai on 2026-08-27: four real encounter notes with the
+expected billing codes, run MedGemma, report precision and recall on the final
+ICD codes, with the Assessment removed before the model sees it.
+
+### ⚠️ Data handling — read this first
+
+The four PDFs are **real patient records and are not de-identified**. They carry
+patient names, dates of birth, a rendering provider and a state license number.
+This is a different situation from MIMIC, which is credentialed but
+de-identified.
+
+- The PDFs live in `../ai-medical-billing/` and **stay outside the repo**.
+- `src/datasets/billing.py` is the only module that opens one. It runs on the
+  machine that holds them, never on the GPU box.
+- The built sample (`data/samples/billing_sample.jsonl`) holds note text and
+  identifiers. Gitignored.
+- Raw model replies (`outputs/billing_icd/*/replies.jsonl`) can quote the note.
+  Gitignored.
+- `results/billing_icd_*.json` holds counts, rates and ICD codes only. A code is
+  a catalogue entry — `B08.5` names no patient — so this file is the one that is
+  safe to paste into a message.
+
+The run happens on Colab, which means the note text goes to a Google VM. That
+was raised and is Shifat's call; it is recorded here so the decision is not
+invisible later.
+
+### The data, and what is actually in it
+
+| note | visit | gold codes |
+|---|---|---|
+| 112976 | sick | B08.5, D18.00 |
+| 26819 | well | Z00.121, Z68.52, J30.2, L20.9, Z55.3, R41.840 |
+| 55688 | sick | J11.1, Z68.52, J30.2, R06.2, S52.501A |
+| 96176 | sick | B97.89, R63.6, Z68.51 |
+
+**17 DX lines, 16 unique codes.** Note 96176 lists `Z68.51` as both DX 3 and
+DX 4 — a data-entry duplicate, not two billable things. Both sides are
+deduplicated before scoring, so gold for that note is 3 codes.
+
+Gold is the `DX n:` lines and nothing else. The free-text impression above them
+("Influenza", "Viral illness") is the clinician's wording, not a code. The
+CPT/E&M codes under Procedures (99213, 99214, 99394) are out of scope — the
+question was about ICD.
+
+### Removing the Assessment is not enough
+
+The Problem List is a second copy of the answer. Note 26819 prints
+
+```
+- J30.2 OTHER SEASONAL ALLERGIC RHINITIS
+- L20.9 ATOPIC DERMATITIS, UNSPECIFIED
+- UNDERACHIEVEMENT IN SCHOOL
+- ATTENTION AND CONCENTRATION DEFICIT
+```
+
+— two gold **codes** verbatim and two more gold **descriptions** word for word.
+Notes 55688 and 112976 leak one description each the same way. With only the
+Assessment removed, the model can copy rather than reason, and the number is
+flattered.
+
+That is not purely a leak, though: a real coder does read the Problem List. So
+it is not silently patched — it is measured. Hence three input variants:
+
+| variant | shown to the model | gold codes still visible |
+|---|---|---|
+| `full` | everything, `DX` lines included | 16 |
+| `assessment_cut` | Assessment removed — **as asked** | 2 |
+| `leakage_cut` | Assessment + Problem List removed | 0 |
+
+**One prompt, three inputs.** The variants differ only in the text removed, so
+every difference between the three numbers is attributable to that removal
+rather than to a prompt change. A second prompt would confound the two.
+
+`full` is **not a result** — it is a harness check. The model is being asked to
+read codes off the page; if it cannot, the prompt or the parser is broken and
+the other two numbers are measuring the harness.
+
+### Sample size is the headline caveat
+
+16 gold codes across 4 notes. **One code is 6.25 recall points.** Any figure
+this produces is a spot check and cannot carry a decision on its own. A real
+number needs ~50 notes.
+
+Three of the 16 are also not extraction problems at all. `Z68.51`/`Z68.52` are
+BMI-percentile codes: the note prints `BMI: 17.8 (24 %ile)` and the code depends
+on knowing the 24th percentile maps to `Z68.52` — a code-book lookup, not
+reading comprehension. `Z00.121` needs "well visit *with abnormal findings*",
+a judgement about the visit type. The report prints every gold code with its
+hit/miss so those are visible individually rather than buried in a mean.
+
+### What each file does
+
+| file | role |
+|---|---|
+| `src/billing_config.py` | paths, model, the three variants, section names, scoring policy |
+| `src/datasets/billing.py` | PDF → text → sections → gold codes → variants. The only module that opens a PDF. |
+| `src/build_billing_sample.py` | CLI; prints the parse and the leak counts, which have right answers |
+| `src/prompt_billing.py` | the code-assignment prompt + permissive reply parsing |
+| `src/evaluate_billing.py` | run, score, report |
+
+Two parsing details worth knowing, because both are places a parser loses a
+block silently. The patient banner (`NAME (Sex: F, DOB: ...)`) repeats once per
+page; it is kept **once** rather than dropped, because sex and date of birth are
+load-bearing for pediatric coding — `Z68.5x` is *pediatric* BMI-for-age and
+`Z00.121` is a *child* health exam. And the Problem List is not a section of its
+own: it is a sub-block inside Patient History, so `leakage_cut` removes the block
+and stops, leaving the rest of the history intact.
+
+### Running it
+
+```bash
+# 1. On the machine with the PDFs (~2 s). Needs poppler-utils.
+make billing-sample
+#    Read what it prints. The leak counts are checks: full 16, assessment_cut 2,
+#    leakage_cut 0. A non-zero leakage_cut means a third copy of the answer
+#    exists somewhere the parser does not know about.
+
+# 2. No GPU, ~1 s. Every variant must read 1.0000/1.0000.
+make billing-oracle
+
+# 3. On a GPU (Colab T4). Harness check first — 4 calls — then the run.
+make billing-check      # variant `full` only
+make billing-run        # all three variants, 12 calls
+
+# No GPU: re-score what is cached
+make billing-rescore
+
+# See exactly what the model is shown for one note (prints note text)
+make billing-show NOTE=26819
+```
+
+CLI: `--variant` (repeatable), `--oracle`, `--score-only`, `--dump-replies`,
+`--max-new-tokens`, `--no-resume`, `--model`, `--model-name`, `--sample-file`,
+`--output-dir`.
+
+Colab: [`colab_runner_billing.ipynb`](colab_runner_billing.ipynb).
+
+Decision log: [`docs/billing-icd-internal.md`](docs/billing-icd-internal.md).
+
+---
+
 ## Tests
 
 CPU-only, no GPU, no model download, no dataset download — and **no real note
