@@ -68,34 +68,58 @@ _SYSTEM = (
     "commentary."
 )
 
-# SYNTHETIC. No content from the supplied notes appears here. It is a pediatric
-# sick visit because the corpus is pediatric outpatient, and it demonstrates the
-# one distinction the prompt most needs to land: the otitis media being treated
-# today is coded, the eczema mentioned in passing in the history is not.
+# SYNTHETIC. No content from the supplied notes appears here, and that is
+# enforced by more than good intentions — see the note on contamination below.
+#
+# It is a pediatric sick visit because the corpus is pediatric outpatient, and
+# it demonstrates the two distinctions the prompt most needs to land: the
+# conditions treated today are coded, the lactose intolerance sitting in the
+# history is not, and the itching is a symptom of what was already coded rather
+# than a finding of its own.
+#
+# THE FIRST VERSION OF THIS EXAMPLE CONTAMINATED THE RESULTS. It was an otitis
+# media visit coded H66.001. One of the four notes opens with the chief
+# complaint "Ear infection, fever, ear pulling" — and H66.001 came back as a
+# false positive on that note in every variant and every generation config,
+# despite its exam recording normal canals and TMs.
+#
+# The shape leaked as well as the code. Under the repetition-penalty run, 10 of
+# the 16 false positives carried three digits after the decimal point — H66.001,
+# Z00.001, B95.001, R17.001, F20.901 — against only 2 of 16 gold codes shaped
+# that way. A single example teaches its format, not only its content.
+#
+# So: two conditions rather than one, closer to the 2-6 codes these notes
+# actually carry; two different code shapes (".00" and ".4") so neither is the
+# obvious template; and clinical content chosen to be absent from all four
+# notes. `tests/test_billing_prompt_hygiene.py` re-checks that absence against
+# the built sample, so the next person to edit this cannot reintroduce the
+# problem silently.
 _EXAMPLE_INPUT = (
     "Visit Information\n"
     "Appointment type: SICK VISIT, EST\n"
     "\n"
     "CC/HPI\n"
-    "3 days of fever and right ear pain. Pulling at the right ear.\n"
+    "Crusted sores around the chin for four days, and a scaly ring on the left "
+    "forearm for two weeks. Both itchy. No fever.\n"
     "\n"
     "Patient History\n"
-    "Past Medical History: eczema, well controlled, no flare in over a year.\n"
+    "Past Medical History: lactose intolerance, diet-controlled.\n"
     "\n"
     "Vital Signs\n"
-    "Temp: 101.4F\n"
+    "Temp: 98.4F\n"
     "\n"
     "Exam Findings\n"
-    "Ears: ABNORMAL right TM erythematous and bulging. Left TM normal.\n"
+    "Skin: ABNORMAL honey-crusted lesions over the chin. ABNORMAL annular "
+    "scaly patch with central clearing on the left forearm.\n"
     "\n"
     "Plan\n"
-    "Amoxicillin 400mg/5mL. Recheck in 2 weeks if not improved."
+    "Mupirocin ointment to the face three times daily for seven days.\n"
+    "Topical clotrimazole to the forearm twice daily for three weeks."
 )
 
 _EXAMPLE_OUTPUT = json.dumps({"codes": [
-    {"code": "H66.001",
-     "description": "Acute suppurative otitis media without spontaneous "
-                    "rupture of ear drum, right ear"},
+    {"code": "L01.00", "description": "Impetigo, unspecified"},
+    {"code": "B35.4", "description": "Tinea corporis"},
 ]}, indent=None)
 
 
@@ -136,9 +160,9 @@ _INSTRUCTION = (
     "Example output:\n"
     f"{_EXAMPLE_OUTPUT}\n"
     "\n"
-    "The example note mentions eczema, but it is past history that was not "
-    "addressed at this visit, so it is not coded. The fever and the ear pain "
-    "are symptoms of the otitis media, so they are not coded separately "
+    "The example note mentions lactose intolerance, but it is past history that "
+    "was not addressed at this visit, so it is not coded. The itching is a "
+    "symptom of the two skin conditions, so it is not coded separately "
     "either.\n"
     "\n"
     'If there are genuinely no codeable diagnoses, return {"codes": []}.\n'
