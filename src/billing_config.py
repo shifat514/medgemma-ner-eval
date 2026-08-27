@@ -59,12 +59,26 @@ MODEL_NAME = os.environ.get("MEDGEMMA_MODEL_NAME", "medgemma-4b-it")
 
 LOAD_IN_4BIT = True
 
-# 512 rather than the recall branch's 1024. Gold is 2-6 codes per note and the
-# output is one short object per code, so a correct reply is well under 200
-# tokens. A reply that runs to 512 is looping, not thorough — and n_cap_hits is
-# printed so that shows up as a number rather than as quiet lost recall.
+# 1024, RAISED FROM 512 AFTER THE FIRST RUN MEASURED IT.
+#
+# The original 512 was reasoned, not measured, and the reasoning was wrong. It
+# went: gold is 2-6 codes per note, one short object per code, so a correct
+# reply is well under 200 tokens; anything reaching 512 is looping rather than
+# thorough.
+#
+# The 2026-08-27 run truncated 6 of 12 replies — all four `leakage_cut` notes
+# and two `assessment_cut` notes. The premise the cap rested on is the thing
+# under test: the model does NOT return 2-6 codes. `full` returned 17 across
+# four notes without truncating, and the two harder variants ran past 512, so
+# the model is over-producing exactly as it did on the recall branch. Sizing the
+# budget to gold rather than to observed output made every truncation land on
+# the two variants that matter and none on the harness check.
+#
+# 1024 matches the recall branch. It does not fix over-production — nothing here
+# does, and precision is where that will show up — but it stops the measurement
+# from being decided by the cap. Truncations are still counted and printed.
 GEN_CONFIG = {
-    "max_new_tokens": int(os.environ.get("BILLING_MAX_NEW_TOKENS", "512")),
+    "max_new_tokens": int(os.environ.get("BILLING_MAX_NEW_TOKENS", "1024")),
     "do_sample": False,
 }
 

@@ -66,6 +66,47 @@ def test_unparseable_reply_yields_no_codes_rather_than_raising():
         assert parse_codes(reply) == []
 
 
+def test_truncated_reply_yields_every_complete_code():
+    """The bug that emptied the 2026-08-27 run. See prompt_billing._salvage_truncated.
+
+    A reply cut off mid-array leaves the outer object unclosed. The old path
+    found the first BALANCED brace — which is the first *code* object — parsed
+    it cleanly as a single unwrapped code, and discarded the rest. No error, no
+    empty result: exactly one code, every time, and `leakage_cut` read 0.0000
+    across four notes whose answers were never read.
+    """
+    reply = (
+        '{"codes": [{"code": "J11.1", "description": "Influenza"}, '
+        '{"code": "R06.2", "description": "Wheezing"}, '
+        '{"code": "S52.'
+    )
+    assert [c["code"] for c in parse_codes(reply)] == ["J11.1", "R06.2"]
+
+
+def test_truncated_reply_with_one_complete_code_still_yields_one():
+    reply = '{"codes": [{"code": "B08.5", "description": "Enteroviral phar'
+    assert [c["code"] for c in parse_codes(reply)] == []
+
+
+def test_complete_reply_is_unaffected_by_the_salvage_path():
+    """Salvage must not change what a well-formed reply parses to."""
+    reply = ('{"codes": [{"code": "J11.1", "description": "Influenza"}, '
+             '{"code": "R06.2", "description": "Wheezing"}]}')
+    assert [c["code"] for c in parse_codes(reply)] == ["J11.1", "R06.2"]
+
+
+def test_single_unwrapped_code_object_still_parses():
+    """The shape salvage now shares a code path with — must not regress."""
+    assert [c["code"] for c in parse_codes('{"code": "B08.5"}')] == ["B08.5"]
+
+
+def test_salvage_ignores_objects_that_carry_no_code():
+    reply = ('{"note": "here is my answer"} '
+             '{"codes": [{"code": "J30.2", "description": "Rhinitis"}, '
+             '{"code": "L20.')
+    assert [c["code"] for c in parse_codes(reply)] == ["J30.2"]
+
+
 def test_malformed_code_is_kept_as_a_false_positive():
     """CPT codes and invented strings are counted against the model, not dropped.
 

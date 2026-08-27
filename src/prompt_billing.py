@@ -201,13 +201,92 @@ def _from_bare_string(text):
     return text.strip(), ""
 
 
+def _iter_json_objects(text):
+    """Yield every balanced ``{...}`` substring in `text`, left to right.
+
+    ``prompt._find_json_object`` returns only the first one. That is the right
+    behaviour for a complete reply and the wrong behaviour for a truncated one —
+    see ``_salvage_truncated``.
+    """
+    i, n = 0, len(text)
+    while True:
+        start = text.find("{", i)
+        if start == -1:
+            return
+
+        depth, in_str, esc, end = 0, False, False, -1
+        for j in range(start, n):
+            c = text[j]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+            elif c == '"':
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j
+                    break
+
+        if end == -1:
+            # Unbalanced from here — in a truncated reply this is the OUTER
+            # object, whose closing brace was never written. Advance one
+            # character and try the next brace rather than giving up, which is
+            # what reaches the complete code objects nested inside it.
+            i = start + 1
+        else:
+            yield text[start:end + 1]
+            i = end + 1
+
+
+def _salvage_truncated(reply):
+    """Recover every COMPLETE code object from a reply that was cut off mid-array.
+
+    THIS IS WHERE THE FIRST RUN LOST ITS NUMBERS, so it is worth being explicit
+    about the failure. A reply that hits the token cap looks like:
+
+        {"codes": [{"code": "J11.1", ...}, {"code": "R06.2", ...}, {"code": "S52.
+
+    The outer object never closes. ``_find_json_object`` scans for the first
+    BALANCED ``{...}``, fails on the outer one, moves to the next ``{`` — and
+    returns the first *code* object, which parses cleanly as a dict with a code
+    field. So the old path did not error and did not return empty: it returned
+    exactly one code and silently discarded every other complete one.
+
+    On the 2026-08-27 run that hit 6 of 12 replies, and every one of them scored
+    as a single prediction. ``leakage_cut`` read 0.0000 across the board from
+    four notes whose answers were never actually read.
+
+    A truncated reply is still a truncated reply — ``truncated`` stays flagged
+    and the run reports it — but the codes the model did finish writing are now
+    counted, in both directions: recall for the ones that are right, precision
+    for the ones that are wrong.
+    """
+    out = []
+    for chunk in _iter_json_objects(reply):
+        try:
+            obj = json.loads(chunk)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(obj, dict) and _first_str(obj, _CODE_KEYS):
+            out.append(obj)
+    return out
+
+
 def parse_codes(reply):
     """Parse a MedGemma reply into ``[{"code":..., "description":..., "well_formed":...}]``.
 
     DELIBERATELY PERMISSIVE ABOUT SHAPE, DELIBERATELY STRICT ABOUT CONTENT. Any
     JSON shape that carries a code string is accepted — bare strings, the wrong
-    container key, the wrong field name — because losing a real prediction to a
-    formatting quirk would understate precision AND recall at once.
+    container key, the wrong field name, a reply truncated mid-array — because
+    losing a real prediction to a formatting quirk would understate precision
+    AND recall at once.
 
     But a returned code that is not shaped like ICD-10-CM (a CPT code such as
     "99213", a description with no code, an invented string) is KEPT and flagged
@@ -245,9 +324,19 @@ def parse_codes(reply):
             if isinstance(val, list):
                 items = val
                 break
-        # A single object with a code field, returned unwrapped.
-        if items is None and _first_str(data, _CODE_KEYS):
+
+    # A CONTAINER IS PROOF THE REPLY CLOSED; A BARE CODE OBJECT IS NOT. Reaching
+    # here with no container means either the model returned one unwrapped code,
+    # or the reply was cut off mid-array and the first code object is all that
+    # balanced. Those are indistinguishable at this point and the second is the
+    # common case, so salvage the whole reply rather than trusting the first hit.
+    if items is None:
+        salvaged = _salvage_truncated(reply)
+        if salvaged:
+            items = salvaged
+        elif isinstance(data, dict) and _first_str(data, _CODE_KEYS):
             items = [data]
+
     if items is None:
         return []
 
