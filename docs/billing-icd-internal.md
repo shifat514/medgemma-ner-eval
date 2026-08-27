@@ -354,25 +354,236 @@ follows from both results, and it is still not built.
 
 ---
 
+## Decision 9 — measure whether it FOUND what it could not code
+
+Raised by Shifat after the numbers were in, and it is a fair hit: this branch
+built a one-shot "note in, codes out" prompt and ignored two things already
+measured to work on the recall branch.
+
+  - `prompt_recall`'s `billable` extraction — 78 of 100 billed phrases, and it
+    beat `scoped` on hallucinated spans 9.22% -> 1.02%.
+  - `recall_filter`'s `bare` billability question — precision 0.1135 -> 0.2311,
+    dropping 710 findings, 97.2% of them correctly, from a bare question with no
+    hints. That result says MedGemma already knows what is billable and does not
+    apply it while extracting.
+
+The recall branch had ALREADY established that this model cannot do a compound
+task in one call — that is why the filter is a second pass at all. Asking it to
+find conditions, judge billability and recall exact ICD codes in a single prompt
+repeated the mistake that work had already diagnosed.
+
+**What that changes and what it does not.** It does not threaten 0 of 16: the
+model produced no correct code under any of four configurations. It does change
+what the number *means*, because 0 of 16 cannot separate
+
+    never found the influenza          -> a bigger model might help
+    found it, coded it J11.9           -> a code book would help
+
+and those are different pieces of work. So `evaluate_billing_extract.py` runs the
+existing `billable` prompt over the same notes and asks, per gold code, whether
+the condition was surfaced. `billing_evidence.py` is the hand-built key —
+written from the notes BEFORE any extraction output was looked at, which is the
+only thing keeping it from being fitted.
+
+**A separate module, not a flag.** Different prompt, different unit (phrases, not
+codes), different answer key. One command reporting two metrics invites quoting
+the friendlier one.
+
+---
+
+## The ceiling correction — a denominator we published wrong
+
+Building the evidence key found something the code evaluation had missed.
+
+Four of the sixteen gold codes have **no supporting text at all** once the
+Problem List is removed:
+
+| code | note | why |
+|---|---|---|
+| `D18.00` | 112976 | hemangioma — Problem List and Assessment only |
+| `L20.9` | 26819 | atopic dermatitis — Problem List only; "eczema" appears nowhere in the corpus |
+| `J30.2` | 55688 | allergic rhinitis — Problem List only (26819 also has it in Past Medical History, so that one survives) |
+| `R06.2` | 55688 | wheezing — Problem List only; the one other mention is ROS "Denies wheezing" |
+
+So the structural ceiling is:
+
+```
+full             16 of 16
+assessment_cut   16 of 16
+leakage_cut      12 of 16
+```
+
+`leakage_cut` recall was reported as 0 of **16** when 12 was the reachable
+maximum. **The result stands** — the model also missed all twelve that were
+reachable — but the denominator was wrong, and it was wrong in the message sent
+to Ehtesham Bhai.
+
+These four are chronic problems carried forward on the chart, which is precisely
+how a coder bills them. Decision 3 refused to call the Problem List pure
+contamination for that reason; this measures the cost of cutting it anyway.
+`leakage_cut` over-corrected — it removed real clinical evidence along with the
+leaked code strings.
+
+**Negation scoping is what makes the ceiling honest, and it took two rounds.**
+`R06.2` first counted as reachable because "wheezing" appears in "Denies
+wheezing or difficulty breathing" — a sentence saying the patient does not have
+it. Then scoping on newlines found none, because `normalize` collapses them to
+fix the PDF's mid-phrase wraps, so the clause ran back through the Problem List
+into the ROS and reported `J30.2` and `R06.2` unreachable under
+`assessment_cut`, where both are printed in full. The list bullets survive
+normalization; those plus bounded lookback are the break set.
+
+---
+
+## Not done, in priority order
+
+**1. The extraction run. 12 calls, ~15 min. Highest value.**
+
+`make billing-extract`, or cell 12 of the notebook. `--ceiling` already runs with
+no GPU and its numbers are above.
+
+This backs a sentence ALREADY SENT to Ehtesham Bhai — "the model reads the notes
+fine". That claim currently rests on three examples picked out of the false
+positives by eye. It is the load-bearing sentence of the whole message, because
+it is what turns a bad number into a direction, and it is the first thing a
+careful reader would push on. Turn it into a measurement.
+
+**2. MedGemma 27B. Optional, answers a real question.**
+
+Tests capacity against architecture: does a bigger model hold enough of the code
+book, or does no model recall 70k codes reliably? Expectation is that it improves
+and does not reach usable, but if it goes 0 -> 6 of 16 the recommendation
+changes.
+
+Practicalities, since they are not obvious:
+
+  - 27B in NF4 is ~15-16 GB. A free Colab T4 (16 GB, ~14.7 usable) will not fit
+    it. Kaggle's free tier gives **2x T4 = 32 GB** and `model.py` already passes
+    `device_map="auto"`, so it sharded across both without changes.
+  - T4 is Turing: no native bfloat16, and `model.py` hardcodes it in two places.
+    Kaggle needs float16. An L4 (Colab Pro) does not.
+  - `model.py` hardcodes the pipeline task `image-text-to-text`, which is right
+    for the multimodal 4B. A text-only 27B variant needs `text-generation`.
+    Check which variant before running.
+  - Kaggle: internet is OFF by default in notebook settings and the failure does
+    not say so; there is no Drive, so output goes to `/kaggle/working` and is
+    lost when the session ends; the sample file arrives as a PRIVATE Kaggle
+    Dataset, not a file upload.
+
+**3. The three-pass build, if anyone asks for it.**
+
+    note -> extract billable findings   (billable prompt — built, 78/100)
+         -> filter: is this billable?   (bare filter — built, 0.11 -> 0.23)
+         -> code each survivor          <- not built
+
+Worth being clear that step 3 done by the model is still a 4B recalling a code
+book from memory, and it already invents `R17.31`, `Z00.0000`, `B95.001`. The
+version that reaches a product replaces step 3 with a lookup against the real
+ICD-10-CM catalogue — a free CMS download, ~70k codes — which is deterministic,
+auditable, and cannot invent a code. That is the piece the MDACE work has been
+calling "the downstream term->ICD lookup" for weeks, and it is still not built.
+
+---
+
 ## What Ehtesham Bhai has been told, and what he has not
 
-**Told, 2026-08-27:** the headline (0 of 16), the Problem List leak and what the
-two recovered codes were, the harness check at 16/16, the four configurations,
-and the sample-size caveat. Also the `Z68.51` duplicate in note 96176, as
-something to check on their side.
+### Sent 2026-08-27, on Google Chat, verbatim
 
-**Not told, and not currently worth a message:**
+> Ran your 4 notes through MedGemma-4B today. Assessment removed before the
+> model saw anything, as you said.
+>
+> Result: 0 of 16 codes correct. Precision 0.00, recall 0.00.
+>
+> The issue is, the model reads the notes fine. It can't produce the code. It
+> found the right conditions — it just couldn't turn them into the exact billed
+> code:
+>
+> ```
+> note    what it found     said        billed
+> ------  ----------------  ----------  ----------
+> 55688   the influenza     J11.9       J11.1
+> 26819   a well visit      Z00.00      Z00.121
+> 55688   the wrist injury  M25.101A    S52.501A
+> ```
+>
+> Z00.00 is the adult exam code, Z00.121 the child one. M25.101A is wrist pain,
+> S52.501A a distal radius fracture. Right neighbourhood, wrong address. It also
+> invented codes that don't exist — R17.31, Z00.0000. It isn't looking codes up,
+> it's generating strings that look like codes.
+>
+> How we evaluated
+> • Gold = the DX 1..N lines under Assessment. • Input = the full note with the
+> Assessment block stripped. One call per note; they're short enough to fit in a
+> single prompt, so no splitting.
+> • Also stripped the Problem List. Note 26819 prints these higher up the page:
+> `- J30.2 OTHER SEASONAL ALLERGIC RHINITIS` / `- L20.9 ATOPIC DERMATITIS,
+> UNSPECIFIED`. Left in, the model scores 2 of 16 — those exact two, copied.
+> Removed, it's zero.
+> • Scoring = exact code match, deduplicated. J11.9 against J11.1 is a miss,
+> same as any unrelated code. Strict, but a claim with the wrong code gets
+> denied.
+> • Sanity check: with the Assessment left in, the model scored 16 of 16. So it
+> can read codes off a page and our scoring is working — the zero is a real
+> result, not a bug in our setup.
+> • 4 configurations tried — two prompts, two decoding settings. Zero every time.
+>
+> One caveat: 16 codes across 4 notes is small. One code moves recall 6 points.
+> Treat this as a spot check; ~50 notes would make it a number worth deciding on.
 
-1. The three harness bugs above. They are the reason today took as long as it
-   did, and the numbers are only trustworthy because they were found — but the
-   final numbers do not depend on knowing that.
-2. That the repo could not answer his question at all before today; the
-   phrase to code step never existed.
-3. That three of the 16 gold codes are BMI-percentile lookups and one is a
-   visit-type judgement, so even a working model needs a code-book step.
-4. That the notes are not de-identified and this ran on Colab.
+**Shape of that message was deliberate.** He was not expecting zero, so a bare
+number would have read as a broken pipeline. Leading with "it reads the notes
+fine, it can't produce the code" reframes it from *the model failed* to *we
+asked it to do the one part of the job that needs a lookup table*, which is both
+true and a far more useful thing to hand someone. The "How we evaluated" section
+exists because the first thing anyone sensible asks about a zero is whether the
+process was wrong.
 
-Items 3 and 4 should go out if he asks for next steps or for more data.
+### Owed to him, and why it was held back
+
+**1. The denominator is wrong in that message.** `leakage_cut` recall is 0 of
+**12** reachable, not 0 of 16 — see the ceiling correction above. This was found
+after sending. It does not change the result and it is not worth an isolated
+correction; it should lead the next message:
+
+> Correction on the denominator: 4 of the 16 codes are chronic problems that
+> only appear in the Problem List, so when I stripped that, they became
+> unreachable by anyone. The reachable target was 12, not 16. The model still
+> got 0 of those 12.
+
+**2. "The model reads the notes fine" is not yet measured.** Three examples,
+picked by eye. The extraction run is what turns it into a number. This is the
+sentence the whole recommendation rests on and it is the weakest thing in the
+message.
+
+**3. Three of the 16 gold codes are not readable from the note at all.**
+`Z68.51`/`Z68.52` need a BMI-percentile table (`BMI: 17.8 (24 %ile)` ->
+`Z68.52`); `Z00.121` needs a visit-type judgement. Even a working model needs a
+code-book step for those. Say it if he asks what would fix this.
+
+**4. The notes are not de-identified and this ran on Colab** — a Google VM.
+Names, dates of birth, a rendering provider, a license number NV15994. Raise it
+before he sends more data.
+
+**5. Note 96176 lists `Z68.51` twice.** Sent in an earlier draft, trimmed from
+the version that went out. Probably a template bug on their side; worth a line
+when there is a reason to write again.
+
+### Deliberately NOT told
+
+**The Kaggle / 27B option.** Which GPU we rent is our problem. "We could try a
+bigger model" invites a decision he has no information to make, and offering it
+immediately after "0 of 16" walks back the finding — the message says the
+problem is code lookup rather than comprehension, and leading with *bigger
+model* muddies that before he has replied. Run it, then tell him the answer.
+
+**The three harness bugs.** They are why today took as long as it did, and the
+numbers are only trustworthy because they were found. They are not his problem
+and the final numbers do not depend on knowing about them.
+
+**That the repo could not answer his question before today.** The phrase-to-code
+step never existed; what he received is MedGemma asked for codes directly, not
+the pipeline he has been hearing about. Worth saying if the conversation turns to
+what to build next, because it changes what "next" means.
 
 Related: [`recall-benchmark-internal.md`](recall-benchmark-internal.md),
 [`precision-plan-internal.md`](precision-plan-internal.md).

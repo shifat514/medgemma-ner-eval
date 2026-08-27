@@ -648,12 +648,66 @@ make billing-show NOTE=26819
 ```
 
 CLI: `--variant` (repeatable), `--oracle`, `--score-only`, `--dump-replies`,
-`--max-new-tokens`, `--no-resume`, `--model`, `--model-name`, `--sample-file`,
-`--output-dir`.
+`--max-new-tokens`, `--repetition-penalty`, `--no-resume`, `--model`,
+`--model-name`, `--sample-file`, `--output-dir`.
 
 Colab: [`colab_runner_billing.ipynb`](colab_runner_billing.ipynb).
 
+### The result
+
+Four configurations — two prompts, two decoding configs. **Recall on
+`leakage_cut` is 0 of 16 in every one.**
+
+| prompt | penalty | full | assessment_cut | leakage_cut |
+|---|---|---|---|---|
+| ear example | off | P .9412 / R 1.0000 | P .0625 / R .1250 | P 0 / R 0 |
+| ear example | 1.15 | P .9412 / R 1.0000 | P 0 / R 0 | P 0 / R 0 |
+| skin example | off | P .3111 / R .8750 | P .0175 / R .0625 | P 0 / R 0 |
+| skin example | 1.15 | P .7778 / R .8750 | P .1000 / R .0625 | P 0 / R 0 |
+
+The harness is proven: `full` reached 16/16 under the ear prompt, so the pipeline
+scores a perfect answer when one exists. The only two codes ever recovered
+without the Assessment were `J30.2` and `L20.9` — the two that note 26819's
+Problem List spells out in full. Precision is not worth quoting; it swings 0.00
+to 0.94 on how badly the model looped, not on anything about coding.
+
+### Did it FIND what it could not code?
+
+A separate question with a separate answer key. 0 of 16 cannot tell "never found
+the influenza" from "found it and coded it `J11.9`", and those point at
+different work — a different model against a code-book lookup.
+
+`src/evaluate_billing_extract.py` runs the extraction prompt that already exists
+(`prompt_recall`'s `billable`, 78 of 100 billed phrases on MDACE) over the same
+notes and asks, per gold code, whether the condition was surfaced.
+`src/billing_evidence.py` is the hand-built key: what each of the 16 gold codes
+is evidenced by *in the note text*, not its ICD description — "Enteroviral
+vesicular pharyngitis" appears nowhere in note 112976, but "coxsackie" does. It
+was written from the notes before any extraction output was looked at.
+
+**It corrected a denominator.** `--ceiling` needs no GPU:
+
+```
+full             16 of 16
+assessment_cut   16 of 16
+leakage_cut      12 of 16
+```
+
+Four codes lose their only evidence when the Problem List goes — `D18.00`,
+`L20.9`, and note 55688's `J30.2` and `R06.2`. They are chronic problems carried
+forward on the chart, which is how a coder bills them. So `leakage_cut` recall
+was quoted against 16 when 12 was the reachable maximum. The result stands, since
+the model missed all twelve that *were* reachable, but `leakage_cut`
+over-corrected: it removed real clinical evidence along with the leaked codes.
+
+```bash
+make billing-ceiling    # no GPU, ~1s
+make billing-extract    # 12 calls
+```
+
 Decision log: [`docs/billing-icd-internal.md`](docs/billing-icd-internal.md).
+It carries the four-way result table, the three harness bugs found by running
+this, what was sent to Ehtesham Bhai verbatim, and what is still owed.
 
 ---
 
