@@ -45,11 +45,38 @@ def run_messages(pipe, messages, gen_config=None, default_gen=None):
 
     Split out of ``run_medgemma`` so the MIMIC medication evaluation can supply
     its own messages and its own generation config while sharing this call path.
+
+    GENERATION ARGUMENTS GO IN ``generate_kwargs``, NOT AS BARE KWARGS, AND THE
+    DIFFERENCE IS SILENT. ``ImageTextToTextPipeline._sanitize_parameters`` names
+    exactly four things it will route to ``model.generate``: ``max_new_tokens``,
+    ``generate_kwargs``, and two return-shape flags. Everything else in
+    ``**kwargs`` is swept into ``preprocess_params`` and handed to the
+    *processor*, which does not know what to do with it and drops it.
+
+    So ``pipe(text=messages, max_new_tokens=1024, do_sample=False,
+    repetition_penalty=1.15)`` applied the token cap and discarded the other
+    two. The pipeline says so, but only in a log line among several:
+
+        Keyword argument `do_sample` is not a valid argument for this processor
+        and will be ignored.
+
+    This was found on 2026-08-27 when a repetition-penalty A/B on the billing
+    evaluation returned two BYTE-IDENTICAL runs — same counts, same false
+    positives, same order, including one code out of sequence in both. The
+    penalty had never reached the sampler.
+
+    ``do_sample=False`` was being dropped the same way and for the whole life of
+    this module. In practice the two independent runs above were identical, so
+    decoding was deterministic regardless — but that was luck, not the flag
+    working, and nothing measured before today should be read as having had a
+    generation config it chose.
     """
     gen = dict(default_gen if default_gen is not None else GEN_CONFIG)
     if gen_config:
         gen.update(gen_config)
-    output = pipe(text=messages, **gen)
+    # Everything in one dict: passing max_new_tokens both here and as a direct
+    # parameter is an explicit ValueError in the pipeline.
+    output = pipe(text=messages, generate_kwargs=gen)
     return output[0]["generated_text"][-1]["content"]
 
 

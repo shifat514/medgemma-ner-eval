@@ -44,6 +44,7 @@ gitignored output dir, and only the aggregate report is safe to commit.
 """
 
 import argparse
+import hashlib
 import json
 import os
 
@@ -65,18 +66,37 @@ from .datasets.billing import load_sample, normalize_code
 from .prompt_billing import build_messages, parse_codes, prompt_fingerprint
 
 
-def run_tag(model_name, max_new_tokens, prompt_fp, repetition_penalty=1.0):
+def gen_fingerprint(gen):
+    """Short hash of the WHOLE generation config.
+
+    THE READABLE PART OF THE TAG IS NOT ENOUGH, AND THAT COST A RUN. The name
+    used to carry the token cap and the penalty, which looked like "every input
+    that changes the output" until `model.run_messages` turned out to be
+    dropping most of the config before it reached `generate` (see that
+    function's docstring). The repetition-penalty run was therefore written into
+    a directory named `rp115` while no penalty had been applied — a stale cache
+    that reported the wrong thing under a name that said otherwise.
+
+    Hashing the whole dict means any change to what is *asked for* lands in a
+    new directory, including changes to keys nobody thought to put in the name.
+    It cannot detect an argument being dropped downstream, but it does guarantee
+    that fixing such a bug invalidates every result produced under it.
+    """
+    body = json.dumps(gen, sort_keys=True, default=str)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:6]
+
+
+def run_tag(model_name, gen, prompt_fp):
     """Directory name carrying every input that changes the model's output.
 
-    The penalty is omitted from the name when it is 1.0 — i.e. off — so the runs
-    made before it existed stay addressable. `--repetition-penalty 1.0` therefore
-    replays the no-penalty cache instead of re-running it, which makes the
-    comparison free.
+    The token cap and the penalty stay spelled out because a directory listing
+    is read by people; the hash is what actually makes the name complete.
     """
-    tag = f"{model_name}_tok{max_new_tokens}"
-    if repetition_penalty and repetition_penalty != 1.0:
-        tag += f"_rp{str(repetition_penalty).replace('.', '')}"
-    return f"{tag}_p{prompt_fp}"
+    tag = f"{model_name}_tok{gen.get('max_new_tokens')}"
+    penalty = gen.get("repetition_penalty", 1.0)
+    if penalty and penalty != 1.0:
+        tag += f"_rp{str(penalty).replace('.', '')}"
+    return f"{tag}_g{gen_fingerprint(gen)}_p{prompt_fp}"
 
 
 # ---------------------------------------------------------------------------
@@ -232,10 +252,7 @@ def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
     if repetition_penalty is not None:
         gen["repetition_penalty"] = repetition_penalty
 
-    tag = "oracle" if oracle else run_tag(
-        model_name, gen["max_new_tokens"], prompt_fingerprint(),
-        gen.get("repetition_penalty", 1.0),
-    )
+    tag = "oracle" if oracle else run_tag(model_name, gen, prompt_fingerprint())
     run_dir = os.path.join(output_dir, tag)
     per_note_path = os.path.join(run_dir, "per_note.jsonl")
     replies_path = os.path.join(run_dir, "replies.jsonl")
@@ -310,6 +327,7 @@ def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
         "prompt_fingerprint": prompt_fingerprint(),
         "max_new_tokens": gen["max_new_tokens"],
         "repetition_penalty": gen.get("repetition_penalty", 1.0),
+        "gen_fingerprint": gen_fingerprint(gen),
         "run_dir": run_dir,
         "n_notes": len(records),
         "oracle": oracle,

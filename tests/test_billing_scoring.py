@@ -221,19 +221,38 @@ def test_oracle_reply_round_trips_through_the_real_parser():
 # --- prompt -----------------------------------------------------------------
 
 
-def test_run_tag_omits_the_penalty_when_it_is_off():
-    """1.0 must produce the pre-penalty name, or the no-penalty run re-runs.
+def test_run_tag_spells_out_the_cap_and_the_penalty():
+    """The readable half — a directory listing is read by people."""
+    tag = run_tag("m", {"max_new_tokens": 1024, "repetition_penalty": 1.15}, "abc")
+    assert tag.startswith("m_tok1024_rp115_")
+    assert tag.endswith("_pabc")
 
-    That name addresses results already on Drive. Changing it would turn the
-    free half of the A/B into 12 more GPU calls.
-    """
-    assert run_tag("m", 1024, "abc", 1.0) == "m_tok1024_pabc"
-    assert run_tag("m", 1024, "abc") == "m_tok1024_pabc"
+
+def test_run_tag_omits_the_penalty_from_the_name_when_it_is_off():
+    assert "_rp" not in run_tag("m", {"max_new_tokens": 1024}, "abc")
 
 
 def test_run_tag_separates_runs_that_used_a_penalty():
-    assert run_tag("m", 1024, "abc", 1.15) == "m_tok1024_rp115_pabc"
-    assert run_tag("m", 1024, "abc", 1.15) != run_tag("m", 1024, "abc", 1.0)
+    off = run_tag("m", {"max_new_tokens": 1024, "repetition_penalty": 1.0}, "abc")
+    on = run_tag("m", {"max_new_tokens": 1024, "repetition_penalty": 1.15}, "abc")
+    assert off != on
+
+
+def test_run_tag_changes_for_a_key_that_is_not_in_the_readable_name():
+    """The whole point of the hash. `do_sample` appears nowhere in the tag text.
+
+    It went unnamed for the same reason it went unapplied: nobody was looking at
+    it. A config change that does not reach the directory name silently replays
+    the previous config's results.
+    """
+    a = run_tag("m", {"max_new_tokens": 1024, "do_sample": False}, "abc")
+    b = run_tag("m", {"max_new_tokens": 1024, "do_sample": True}, "abc")
+    assert a != b
+
+
+def test_run_tag_is_stable_for_the_same_config():
+    gen = {"max_new_tokens": 1024, "do_sample": False, "repetition_penalty": 1.15}
+    assert run_tag("m", gen, "abc") == run_tag("m", dict(reversed(list(gen.items()))), "abc")
 
 
 def test_prompt_fingerprint_is_stable_and_short():
