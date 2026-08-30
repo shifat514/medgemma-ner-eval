@@ -29,6 +29,8 @@ hf_token*
 .env.*
 *.env
 secrets.*
+# ...but DO commit the placeholder template (real .env stays ignored above).
+!.env.example
 
 # Evaluation output (produced by a run; results/.gitkeep keeps the dir)
 results/*.csv

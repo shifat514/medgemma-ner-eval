@@ -210,6 +210,15 @@ billing-ab:
 billing-rescore:
 	uv run python -m src.evaluate_billing --score-only
 
+# Claude Sonnet, same prompt / parser / scorer / gold -- only the model changes.
+# NO GPU: this is an API call, so it runs on this machine, not Colab.
+#
+# NOTE TEXT LEAVES THE MACHINE and goes to Anthropic's API. Needs
+# ANTHROPIC_API_KEY in .env (copy .env.example) and `uv sync --extra api`.
+# 12 calls, cents. Lands in its own run directory; cannot collide with MedGemma.
+billing-sonnet:
+	uv run python -m src.evaluate_billing --backend anthropic --dump-replies
+
 # --- Did it FIND the conditions it failed to code? -----------------------------
 # A separate question from the code evaluation above, and a separate answer key
 # (src/billing_evidence.py, hand-built from the notes). 0 of 16 codes cannot

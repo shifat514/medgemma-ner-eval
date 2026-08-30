@@ -26,6 +26,9 @@ embed = ["sentence-transformers>=3.0"]
 # Only needed to build the MIMIC sample from an s3:// source. The evaluation
 # itself reads a local file, so a GPU/Colab install does not need this.
 s3 = ["boto3>=1.34"]
+# Only needed for `--backend anthropic`. Imported lazily, so the MedGemma
+# runs and the whole CPU-only test suite work without it.
+api = ["anthropic>=0.40", "python-dotenv>=1.0"]
 
 [tool.uv]
 dev-dependencies = [

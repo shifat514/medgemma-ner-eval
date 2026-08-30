@@ -92,7 +92,8 @@ def run_tag(model_name, gen, prompt_fp):
     The token cap and the penalty stay spelled out because a directory listing
     is read by people; the hash is what actually makes the name complete.
     """
-    tag = f"{model_name}_tok{gen.get('max_new_tokens')}"
+    tokens = gen.get("max_new_tokens") or gen.get("max_tokens")
+    tag = f"{model_name}_tok{tokens}"
     penalty = gen.get("repetition_penalty", 1.0)
     if penalty and penalty != 1.0:
         tag += f"_rp{str(penalty).replace('.', '')}"
@@ -240,17 +241,31 @@ def _append(path, record):
 
 
 def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
-             model_id=MODEL_ID, model_name=MODEL_NAME,
+             model_id=None, model_name=None, backend="medgemma",
              max_new_tokens=None, repetition_penalty=None, resume=True,
              dump_replies=False, output_dir=OUTPUT_DIR, score_only=False):
     records = load_sample(sample_file)
     variants = list(variants or VARIANTS)
 
-    gen = dict(GEN_CONFIG)
-    if max_new_tokens:
-        gen["max_new_tokens"] = max_new_tokens
-    if repetition_penalty is not None:
-        gen["repetition_penalty"] = repetition_penalty
+    # ONE SWITCH, ONE CALL SITE. Everything downstream of the reply --
+    # parser, scorer, gold, variants -- is shared, so the only thing that
+    # differs between a MedGemma run and a Claude run is which model wrote
+    # the reply. That is the entire point of the comparison.
+    if backend == "anthropic":
+        from . import billing_anthropic as api
+        model_id = model_id or api.ANTHROPIC_MODEL
+        model_name = model_name or api.ANTHROPIC_MODEL_NAME
+        gen = {"max_tokens": max_new_tokens or api.ANTHROPIC_MAX_TOKENS}
+        usage = api.new_usage()
+    else:
+        api, usage = None, None
+        model_id = model_id or MODEL_ID
+        model_name = model_name or MODEL_NAME
+        gen = dict(GEN_CONFIG)
+        if max_new_tokens:
+            gen["max_new_tokens"] = max_new_tokens
+        if repetition_penalty is not None:
+            gen["repetition_penalty"] = repetition_penalty
 
     tag = "oracle" if oracle else run_tag(model_name, gen, prompt_fingerprint())
     run_dir = os.path.join(output_dir, tag)
@@ -265,17 +280,22 @@ def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
     print(f"variants   {', '.join(variants)}")
     print(f"run dir    {run_dir}")
     print(f"prompt     {prompt_fingerprint()}")
-    print(f"gen        max_new_tokens={gen['max_new_tokens']}  "
-          f"repetition_penalty={gen.get('repetition_penalty', 1.0)}")
+    print(f"backend    {backend}")
+    print("gen        " + "  ".join(f"{k}={v}" for k, v in sorted(gen.items())))
     print(f"cached {len(done)}, to run {len(todo)}"
           f"{'  (score-only)' if score_only else ''}\n")
 
     pipe = None
     if todo and not oracle and not score_only:
-        from .model import load_medgemma
-        print(f"loading {model_id} (4bit={LOAD_IN_4BIT}) ...")
-        pipe = load_medgemma(model_id)
-        print("loaded.\n")
+        if backend == "anthropic":
+            print(f"using the Anthropic API, model {model_id}")
+            print("NOTE TEXT LEAVES THIS MACHINE.\n")
+            pipe = api.load_client()
+        else:
+            from .model import load_medgemma
+            print(f"loading {model_id} (4bit={LOAD_IN_4BIT}) ...")
+            pipe = load_medgemma(model_id)
+            print("loaded.\n")
 
     if not score_only:
         for i, (rec, variant) in enumerate(todo, 1):
@@ -287,6 +307,11 @@ def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
             if oracle:
                 reply = make_oracle_reply(rec)
                 predicted, n_tokens, truncated = parse_codes(reply), None, False
+            elif backend == "anthropic":
+                predicted, reply, n_tokens, truncated = api.predict_note(
+                    pipe, text, model_id=model_id,
+                    max_tokens=gen["max_tokens"], usage_acc=usage,
+                )
             else:
                 predicted, reply, n_tokens, truncated = predict_note(
                     pipe, text, gen_config=gen
@@ -324,6 +349,7 @@ def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
     run_meta = {
         "model": model_name if not oracle else "oracle",
         "model_id": model_id if not oracle else None,
+        "backend": backend,
         "prompt_fingerprint": prompt_fingerprint(),
         "max_new_tokens": gen["max_new_tokens"],
         "repetition_penalty": gen.get("repetition_penalty", 1.0),
@@ -332,6 +358,13 @@ def run_eval(sample_file=SAMPLE_FILE, variants=None, oracle=False,
         "n_notes": len(records),
         "oracle": oracle,
     }
+    if usage and usage["calls"]:
+        run_meta["usage"] = dict(usage)
+        run_meta["cost_usd"] = round(api.estimate_cost(usage), 4)
+        print(f"\n{usage['calls']} API calls   "
+              f"{usage['input_tokens']:,} in / {usage['output_tokens']:,} out"
+              f"   ~${run_meta['cost_usd']:.4f}")
+
     return result, run_meta, records
 
 
@@ -346,10 +379,12 @@ def _print_summary(result, run_meta, records):
     print("\n" + "=" * 78)
     print("RESULTS — exact ICD-10 code match")
     print("=" * 78)
-    print(f"model   {run_meta['model']}")
+    print(f"model   {run_meta['model']}   ({run_meta.get('backend', 'medgemma')})")
     print(f"prompt  {run_meta['prompt_fingerprint']}")
     print(f"gen     max_new_tokens={run_meta['max_new_tokens']}  "
           f"repetition_penalty={run_meta['repetition_penalty']}")
+    if run_meta.get("cost_usd") is not None:
+        print(f"cost    ~${run_meta['cost_usd']:.4f}")
     print(f"notes   {run_meta['n_notes']}\n")
 
     print(f"{'variant':<18} {'gold':>5} {'pred':>5} {'tp':>4} {'fp':>4} "
@@ -466,8 +501,11 @@ def main():
                         help="replay gold through the parser and scorer; no GPU")
     parser.add_argument("--score-only", action="store_true",
                         help="rescore what is already cached; no model call")
-    parser.add_argument("--model", default=MODEL_ID)
-    parser.add_argument("--model-name", default=MODEL_NAME)
+    parser.add_argument("--backend", default="medgemma",
+                        choices=("medgemma", "anthropic"),
+                        help="anthropic sends the NOTE TEXT to the API")
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--model-name", default=None)
     parser.add_argument("--max-new-tokens", type=int, default=None)
     parser.add_argument("--repetition-penalty", type=float, default=None,
                         help=f"default {REPETITION_PENALTY}; pass 1.0 to turn "
@@ -485,6 +523,7 @@ def main():
         oracle=args.oracle,
         model_id=args.model,
         model_name=args.model_name,
+        backend=args.backend,
         max_new_tokens=args.max_new_tokens,
         repetition_penalty=args.repetition_penalty,
         resume=not args.no_resume,
